@@ -51,6 +51,29 @@ struct Sha512Context {
     std::uint32_t num, mdLength;
 };
 
+struct LibreSslStack {
+    int num;
+    char** data;
+    int sorted;
+    int numAlloc;
+    void* comp;
+};
+
+struct LibreSslX509NameEntry {
+    void* object;
+    void* value;
+    int set;
+    int size;
+};
+
+struct LibreSslX509Name {
+    LibreSslStack* entries;
+    int modified;
+    void* bytes;
+    unsigned char* canonEnc;
+    int canonEnclen;
+};
+
 extern "C" {
 
 std::int64_t APS5_VABI ASN1_INTEGER_get_nid_postfix(const Asn1String* value);
@@ -364,8 +387,8 @@ int APS5_VABI X509_EXTENSION_get_data_nid_postfix(void);
 int APS5_VABI X509_EXTENSION_get_object_nid_postfix(void);
 int APS5_VABI X509_INFO_free_nid_postfix(void);
 int APS5_VABI X509_LOOKUP_file_nid_postfix(void);
-int APS5_VABI X509_NAME_ENTRY_get_data_nid_postfix(void);
-int APS5_VABI X509_NAME_get_entry_nid_postfix(void);
+void* APS5_VABI X509_NAME_ENTRY_get_data_nid_postfix(const LibreSslX509NameEntry* entry);
+LibreSslX509NameEntry* APS5_VABI X509_NAME_get_entry_nid_postfix(const LibreSslX509Name* name, int loc);
 int APS5_VABI X509_NAME_get_index_by_NID_nid_postfix(void);
 int APS5_VABI X509_NAME_get_text_by_NID_nid_postfix(void);
 int APS5_VABI X509_NAME_oneline_nid_postfix(void);
