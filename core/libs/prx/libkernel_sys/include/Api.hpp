@@ -24,6 +24,14 @@ struct KernelTitleWorkaround {
     std::uint64_t ids[2];
 };
 
+struct KernelAuthInfo {
+    std::uint64_t programAuthorityId;
+    std::uint64_t capabilities[4];
+    std::uint64_t attributes[4];
+    std::uint64_t credentials[8];
+};
+static_assert(sizeof(KernelAuthInfo) == 0x88);
+
 extern "C" {
 
 int APS5_VABI aio_read_nid_postfix(GuestAiocb* aiocb);
@@ -41,6 +49,7 @@ std::uint16_t APS5_VABI umask_nid_postfix(std::uint16_t mask);
 int APS5_VABI fstatfs_nid_postfix(int d, KernelStatfs* buf);
 int APS5_VABI sceKernelGetModuleInfoInternal(KernelModule handle, ModuleInfoEx* info);
 int APS5_VABI sceKernelGetModuleListInternal(KernelModule* handles, std::size_t count, std::size_t* actual);
+KernelModule APS5_VABI sceKernelLoadStartModuleForSysmodule(const char* moduleFileName, std::size_t args, const void* argp, std::uint32_t flags, const KernelLoadModuleOpt* opt, int* res);
 int APS5_VABI fstat_nid_postfix(int d, FileStat* sb);
 std::int64_t APS5_VABI readlink_nid_postfix(const char* path, char* buffer, std::size_t size);
 std::int64_t APS5_VABI readlinkat_nid_postfix(int fd, const char* path, char* buffer, std::size_t size);
@@ -81,7 +90,7 @@ int APS5_VABI cpuset_getid_nid_postfix(void);
 int APS5_VABI cpuset_setid_nid_postfix(void);
 int APS5_VABI dynlib_get_obj_member_nid_postfix(void);
 int APS5_VABI futimesat_nid_postfix(void);
-int APS5_VABI get_authinfo_nid_postfix(void);
+int APS5_VABI get_authinfo_nid_postfix(int pid, KernelAuthInfo* info);
 int APS5_VABI get_module_info_list_nid_postfix(void);
 int APS5_VABI get_page_table_stats_nid_postfix(void);
 int APS5_VABI get_sdk_compiled_version_nid_postfix(void);
@@ -265,7 +274,7 @@ int APS5_VABI sceKernelGetIpcPath(void);
 int APS5_VABI sceKernelGetKnobs(void);
 int APS5_VABI sceKernelGetKqueueFromEqueue(void);
 int APS5_VABI sceKernelGetMemoryPstate(void);
-int APS5_VABI sceKernelGetOpenPsIdForSystem(void);
+int APS5_VABI sceKernelGetOpenPsIdForSystem(void* id);
 int APS5_VABI sceKernelGetPagingStatsOfAllObjects(void);
 int APS5_VABI sceKernelGetPagingStatsOfAllThreads(void);
 int APS5_VABI sceKernelGetParentApp(void);
@@ -372,7 +381,6 @@ int APS5_VABI sceKernelIsPs4Process(void);
 int APS5_VABI sceKernelIsTestKit(void);
 int APS5_VABI sceKernelJitGetSharedMemoryInfo(void);
 int APS5_VABI sceKernelKernelHeapUsage(void);
-int APS5_VABI sceKernelLoadStartModuleForSysmodule(void);
 int APS5_VABI sceKernelLoadStartModuleInternalForMono(void);
 int APS5_VABI sceKernelLwfsAllocateBlock(void);
 int APS5_VABI sceKernelLwfsLseek(void);
