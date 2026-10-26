@@ -82,6 +82,9 @@ NumericRun Run(const unsigned char* data, int length, int space, std::size_t fai
 int main() {
     constexpr std::uint64_t allocationError = (3ull << 24) | (0xfffull << 12) | 65;
     std::size_t fastCases = 0;
+    const unsigned char warmUp[] {0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x7f};
+    Run(warmUp, sizeof(warmUp), 0, 1);
+    tracked.fill(nullptr);
     const unsigned char shortOid[] {0x2a, 0x03, 0x04};
     const unsigned char maxWord[] {0x81,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x7f};
     const unsigned char malformed[] {0x2a,0x81};
