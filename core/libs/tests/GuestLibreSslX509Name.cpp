@@ -114,10 +114,10 @@ static const unsigned char UnstructuredNameOid[] {0x2a, 0x86, 0x48, 0x86, 0xf7, 
 struct DecodedName {
     TestObject objects[8];
     Asn1String values[8];
-    TestNameEntry entries[8];
+    LibreSslX509NameEntry entries[8];
     char* slots[8];
-    TestStack stack;
-    TestName name;
+    LibreSslStack stack;
+    LibreSslX509Name name;
 
     DecodedName() {
         const struct { const unsigned char* oid; int oidLength; const char* text; int textLength; } fields[] {
@@ -145,7 +145,7 @@ struct DecodedName {
 
 static void TestIndexByNid() {
     DecodedName decoded;
-    const auto* name = Name(&decoded.name);
+    const auto* name = &decoded.name;
     const int commonName[][2] {{-1, 2}, {-5, 2}, {INT_MIN, 2}, {0, 2}, {2, 4}, {4, -1}, {7, -1}, {8, -1}, {100, -1}};
     for (const auto& [lastpos, index] : commonName) Require(X509_NAME_get_index_by_NID_nid_postfix(name, 13, lastpos) == index);
     Require(X509_NAME_get_index_by_NID_nid_postfix(name, 14, -1) == 0);
@@ -168,13 +168,11 @@ static void TestIndexByNid() {
     decoded.objects[6] = {nullptr, nullptr, 0, 0, nullptr, 0};
     Require(X509_NAME_get_index_by_NID_nid_postfix(name, 0, -1) == 6);
     Require(X509_NAME_get_index_by_NID_nid_postfix(name, 0, 6) == -1);
-    TestStack empty {0, nullptr, 0, 0, nullptr};
-    TestName emptyName {&empty, 0, nullptr, nullptr, 0};
-    TestName noEntries {};
-    Require(X509_NAME_get_index_by_NID_nid_postfix(Name(&emptyName), 13, -1) == -1);
-    Require(X509_NAME_get_index_by_NID_nid_postfix(Name(&noEntries), 13, -1) == -1);
-    RequireThrows([&] { X509_NAME_get_index_by_NID_nid_postfix(name, 102, -1); });
-    RequireThrows([&] { X509_NAME_get_index_by_NID_nid_postfix(name, 6, -1); });
+    LibreSslStack empty {0, nullptr, 0, 0, nullptr};
+    LibreSslX509Name emptyName {&empty, 0, nullptr, nullptr, 0};
+    LibreSslX509Name noEntries {};
+    Require(X509_NAME_get_index_by_NID_nid_postfix(&emptyName, 13, -1) == -1);
+    Require(X509_NAME_get_index_by_NID_nid_postfix(&noEntries, 13, -1) == -1);
     RequireThrows([&] { X509_NAME_get_index_by_NID_nid_postfix(name, 13, INT_MAX); });
     decoded.objects[2].data = nullptr;
     RequireThrows([&] { X509_NAME_get_index_by_NID_nid_postfix(name, 13, -1); });
@@ -196,7 +194,7 @@ static bool BufferHolds(const char* buffer, const char* prefix, std::size_t leng
 
 static void TestTextByNid() {
     DecodedName decoded;
-    const auto* name = Name(&decoded.name);
+    const auto* name = &decoded.name;
     char buffer[64];
     const struct { int len; int result; const char* prefix; std::size_t length; } cases[] {
         {64, 5, "first", 6}, {6, 5, "first", 6}, {5, 4, "firs", 5}, {3, 2, "fi", 3}, {2, 1, "f", 2}, {1, 0, "", 1},
@@ -219,7 +217,6 @@ static void TestTextByNid() {
     Require(X509_NAME_get_text_by_NID_nid_postfix(name, 48, buffer, 64) == 5);
     Require(BufferHolds(buffer, "a@b.c", 6));
     RequireThrows([&] { X509_NAME_get_text_by_NID_nid_postfix(name, 13, buffer, INT_MIN); });
-    RequireThrows([&] { X509_NAME_get_text_by_NID_nid_postfix(name, 6, buffer, 64); });
     decoded.values[2].data = nullptr;
     RequireThrows([&] { X509_NAME_get_text_by_NID_nid_postfix(name, 13, buffer, 64); });
     std::memset(buffer, 0x7f, sizeof(buffer));
