@@ -19,29 +19,6 @@ constexpr std::uint64_t UnknownNid = (8ull << 24) | (0xfffull << 12) | 101;
 constexpr std::uint64_t BufferMalloc = (7ull << 24) | (0xfffull << 12) | 65;
 constexpr std::uint64_t X509Malloc = (11ull << 24) | (0xfffull << 12) | 65;
 
-struct Stack {
-    std::int32_t num;
-    char** data;
-    std::int32_t sorted;
-    std::int32_t numAlloc;
-    void* comp;
-};
-
-struct NameEntry {
-    const LibreSslAsn1Object* object;
-    Asn1String* value;
-    std::int32_t set;
-    std::int32_t size;
-};
-
-struct Name {
-    Stack* entries;
-    std::int32_t modified;
-    void* bytes;
-    unsigned char* canonicalEncoding;
-    std::int32_t canonicalLength;
-};
-
 void Require(bool condition, const char* message) {
     if (condition) return;
     std::fprintf(stderr, "failed: %s\n", message);
@@ -63,45 +40,45 @@ public:
     Builder& Add(const LibreSslAsn1Object* object, std::string bytes, int type = 12) {
         values.push_back(std::move(bytes));
         strings.push_back(Asn1String{});
-        entries.push_back(NameEntry{object, nullptr, static_cast<std::int32_t>(entries.size()), 0});
+        entries.push_back(LibreSslX509NameEntry{const_cast<LibreSslAsn1Object*>(object), nullptr, static_cast<std::int32_t>(entries.size()), 0});
         types.push_back(type);
         return *this;
     }
 
-    Name* Build() {
+    LibreSslX509Name* Build() {
         for (std::size_t index = 0; index < entries.size(); ++index) {
             strings[index] = Asn1String{static_cast<std::int32_t>(values[index].size()), types[index],
                 reinterpret_cast<unsigned char*>(values[index].data()), 0};
             entries[index].value = &strings[index];
             pointers.push_back(reinterpret_cast<char*>(&entries[index]));
         }
-        stack = Stack{static_cast<std::int32_t>(entries.size()), pointers.data(), 0, static_cast<std::int32_t>(pointers.size()), nullptr};
-        name = Name{&stack, 0, nullptr, nullptr, 0};
+        stack = LibreSslStack{static_cast<std::int32_t>(entries.size()), pointers.data(), 0, static_cast<std::int32_t>(pointers.size()), nullptr};
+        name = LibreSslX509Name{&stack, 0, nullptr, nullptr, 0};
         return &name;
     }
 
 private:
     std::vector<std::string> values;
     std::vector<Asn1String> strings;
-    std::vector<NameEntry> entries;
+    std::vector<LibreSslX509NameEntry> entries;
     std::vector<int> types;
     std::vector<char*> pointers;
-    Stack stack{};
-    Name name{};
+    LibreSslStack stack{};
+    LibreSslX509Name name{};
 };
 
 const LibreSslAsn1Object* Object(int nid) {
     return &LibreSslObjects_nid_no_patch[nid];
 }
 
-std::string Oneline(const Name* name, int length) {
+std::string Oneline(const LibreSslX509Name* name, int length) {
     std::vector<char> buffer(static_cast<std::size_t>(length > 0 ? length : 1) + 16, 'Z');
     char* result = X509_NAME_oneline_nid_postfix(name, buffer.data(), length);
     Require(result == buffer.data(), "a caller buffer is returned");
     return result;
 }
 
-std::string Allocated(const Name* name) {
+std::string Allocated(const LibreSslX509Name* name) {
     char* result = X509_NAME_oneline_nid_postfix(name, nullptr, 0);
     Require(result != nullptr, "an allocated result");
     std::string text = result;
@@ -114,11 +91,11 @@ void Basics() {
     Require(Oneline(nullptr, 5) == "NO X", "a null name is truncated as strlcpy does");
     Builder empty;
     Require(Allocated(empty.Build()) == "" && Oneline(empty.Build(), 8) == "", "a name without entries");
-    Name noStack{nullptr, 0, nullptr, nullptr, 0};
+    LibreSslX509Name noStack{nullptr, 0, nullptr, nullptr, 0};
     Require(Allocated(&noStack) == "", "a name without an entry stack");
     Builder pair;
     pair.Add(Object(14), "US").Add(Object(13), "example.com");
-    Name* name = pair.Build();
+    LibreSslX509Name* name = pair.Build();
     Require(Allocated(name) == "/C=US/CN=example.com", "short names and values");
     Require(Oneline(name, 64) == "/C=US/CN=example.com", "the same text in a caller buffer");
     Require(Oneline(name, 21) == "/C=US/CN=example.com", "a buffer that just fits");
@@ -175,13 +152,13 @@ void Growth() {
 void Unsupported() {
     Builder name;
     name.Add(Object(13), "a");
-    Name* built = name.Build();
+    LibreSslX509Name* built = name.Build();
     built->entries->data[0] = nullptr;
     RequireThrows([&] { X509_NAME_oneline_nid_postfix(built, nullptr, 0); }, "a null entry");
     Builder broken;
     broken.Add(Object(13), "a");
     built = broken.Build();
-    reinterpret_cast<NameEntry*>(built->entries->data[0])->value = nullptr;
+    reinterpret_cast<LibreSslX509NameEntry*>(built->entries->data[0])->value = nullptr;
     RequireThrows([&] { X509_NAME_oneline_nid_postfix(built, nullptr, 0); }, "an entry without a value");
 }
 
@@ -223,7 +200,7 @@ void Allocator() {
     ApplicationHeapRegister_nid_no_patch(api.data());
     Builder name;
     name.Add(Object(13), std::string(150, 'a')).Add(Object(17), std::string(300, 'b'));
-    Name* built = name.Build();
+    LibreSslX509Name* built = name.Build();
     char* result = X509_NAME_oneline_nid_postfix(built, nullptr, 0);
     Require(result && allocated == std::vector<std::size_t>{24, 268, 612}, "the buffer header, 268 bytes for 200, then (len + 3) / 3 * 4 for the full text");
     Require(frees == 2, "the header and the first array are freed");
