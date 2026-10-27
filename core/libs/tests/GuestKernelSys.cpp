@@ -510,10 +510,18 @@ void CheckSettimeofday() {
     Require(settimeofday_nid_postfix(nullptr, nullptr) == 0);
     Require(gettimeofday_nid_postfix(nullptr, &zone) == 0 && zone.tz_minuteswest == 0 && zone.tz_dsttime == 0);
     const KernelTimezone west{60, 1};
-    for (const KernelTimeval invalid : {KernelTimeval{0, 1000000}, KernelTimeval{0, -1}, KernelTimeval{-1, 0}})
+    const auto unreadableTime = reinterpret_cast<const KernelTimeval*>(1);
+    const auto unreadableZone = reinterpret_cast<const KernelTimezone*>(1);
+    Require(settimeofday_nid_postfix(unreadableTime, &west) == -1 && Error() == 14);
+    Require(settimeofday_nid_postfix(unreadableTime, unreadableZone) == -1 && Error() == 14);
+    Require(settimeofday_nid_postfix(nullptr, unreadableZone) == -1 && Error() == 14);
+    for (const KernelTimeval invalid : {KernelTimeval{0, 1000000}, KernelTimeval{0, -1}, KernelTimeval{-1, 0}}) {
         Require(settimeofday_nid_postfix(&invalid, &west) == -1 && Error() == 22);
+        Require(settimeofday_nid_postfix(&invalid, unreadableZone) == -1 && Error() == 14);
+    }
     Require(gettimeofday_nid_postfix(nullptr, &zone) == 0 && zone.tz_minuteswest == 0 && zone.tz_dsttime == 0);
     const KernelTimeval valid{1000000000, 0};
+    Require(settimeofday_nid_postfix(&valid, unreadableZone) == -1 && Error() == 14);
     bool rejected = false;
     try {
         settimeofday_nid_postfix(&valid, &west);
