@@ -1,5 +1,6 @@
 #include <openssl/aes.h>
 #include <openssl/des.h>
+#include <openssl/err.h>
 #include <openssl/md4.h>
 #include <openssl/md5.h>
 #include <openssl/ocsp.h>
@@ -77,5 +78,10 @@ const char* SslAlertDescStringLong(int value) { return SSL_alert_desc_string_lon
 const char* OcspCertStatusString(long status) { return OCSP_cert_status_str(status); }
 const char* OcspCrlReasonString(long reason) { return OCSP_crl_reason_str(reason); }
 const char* OcspResponseStatusString(long status) { return OCSP_response_status_str(status); }
+
+void* D2iX509(void** certificate, const unsigned char** in, long length) { return d2i_X509(reinterpret_cast<X509**>(certificate), in, length); }
+void X509Free(void* certificate) { X509_free(static_cast<X509*>(certificate)); }
+unsigned long ErrGetError() { return ERR_get_error(); }
+void ErrClearError() { ERR_clear_error(); }
 
 }
