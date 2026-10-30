@@ -300,12 +300,22 @@ int APS5_VABI X509_STORE_add_cert_nid_postfix(LibreSslX509Store* store, LibreSsl
     object->type = CertificateObject;
     object->certificate = certificate;
     std::atomic_ref<std::int32_t>(certificate->references).fetch_add(1);
+    const auto release = [&] {
+        std::atomic_ref<std::int32_t>(certificate->references).fetch_sub(1);
+        free_nid_postfix(object);
+    };
     auto* objects = static_cast<Stack*>(store->objects);
-    if (Find(objects, object, __func__) != -1) NotImplemented_nid_no_patch("X509_STORE_add_cert: X509_cmp of certificates with the same subject");
-    if (Push(objects, object, __func__)) return 1;
+    bool pushed = false;
+    try {
+        if (Find(objects, object, __func__) != -1) NotImplemented_nid_no_patch("X509_STORE_add_cert: X509_cmp of certificates with the same subject");
+        pushed = Push(objects, object, __func__);
+    } catch (...) {
+        release();
+        throw;
+    }
+    if (pushed) return 1;
     LibreSslPutError_nid_no_patch(X509Library, AnyFunction, MallocFailure);
-    std::atomic_ref<std::int32_t>(certificate->references).fetch_sub(1);
-    free_nid_postfix(object);
+    release();
     return 0;
 }
 

@@ -250,13 +250,24 @@ void SameSubject() {
     auto* store = X509_STORE_new_nid_postfix();
     LibreSslX509* first = Certificate("same", 1);
     LibreSslX509* second = Certificate("same", 2);
+    const auto* objects = static_cast<const Stack*>(store->objects);
     Require(X509_STORE_add_cert_nid_postfix(store, first) == 1, "the first certificate is added");
     RequireThrows([&] { X509_STORE_add_cert_nid_postfix(store, second); }, "a second certificate with the subject needs X509_cmp");
+    Require(second->references == 1 && first->references == 2 && objects->num == 1, "a throwing add gives back its reference");
     RequireThrows([&] { X509_STORE_add_cert_nid_postfix(store, first); }, "adding the same certificate again needs X509_cmp");
+    Require(first->references == 2 && objects->num == 1, "a throwing add of a stored certificate keeps only the store's reference");
     LibreSslX509* modified = Certificate("other");
     modified->certificateInfo->subject->modified = 1;
     RequireThrows([&] { X509_STORE_add_cert_nid_postfix(store, modified); }, "a modified subject needs re-encoding");
+    Require(modified->references == 1 && objects->num == 1, "a modified subject leaves the certificate and the store alone");
     RequireThrows([&] { X509_STORE_add_cert_nid_postfix(nullptr, first); }, "null store");
+    Require(first->references == 2, "a null store takes no reference");
+    modified->certificateInfo->subject->modified = 0;
+    X509_STORE_free_nid_postfix(store);
+    for (auto* certificate : {first, second, modified}) {
+        Require(certificate->references == 1, "every certificate is back to its caller's reference");
+        X509_free_nid_postfix(certificate);
+    }
 }
 
 void Comparator() {
@@ -372,6 +383,9 @@ void Allocator() {
         "a failed push keeps the stack and is a malloc failure");
     failReallocationAt = 0;
     Require(X509_STORE_add_cert_nid_postfix(store, certificates[3]) == 1, "the push succeeds once memory is back");
+    allocations = frees = 0;
+    RequireThrows([&] { X509_STORE_add_cert_nid_postfix(store, certificates[0]); }, "adding a stored certificate again throws");
+    Require(allocations == 1 && frees == 1 && certificates[0]->references == 2, "a throwing add frees its object and drops its reference");
     X509_STORE_free_nid_postfix(store);
     for (auto* certificate : certificates) {
         Require(certificate->references == 1, "the store gave back every reference");
