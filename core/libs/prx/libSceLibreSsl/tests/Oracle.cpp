@@ -38,6 +38,10 @@ const char* OcspCrlReasonString(long reason);
 const char* OcspResponseStatusString(long status);
 void* D2iX509(void** certificate, const unsigned char** in, long length);
 void X509Free(void* certificate);
+void* X509StoreNew();
+void X509StoreFree(void* store);
+int X509StoreAddCert(void* store, void* certificate);
+void* X509StoreObjects(void* store);
 unsigned long ErrGetError();
 void ErrClearError();
 }
@@ -608,6 +612,85 @@ void CompareCertificates() {
     }
 }
 
+struct StoreObject {
+    std::int32_t type;
+    const LibreSslX509* certificate;
+};
+
+std::string DescribeStore(const LibreSslStack* objects, const std::vector<const LibreSslX509*>& certificates) {
+    std::string text = DescribeStack(objects);
+    for (int index = 0; index < objects->num; ++index) {
+        const auto* object = reinterpret_cast<const StoreObject*>(objects->data[index]);
+        const auto at = std::find(certificates.begin(), certificates.end(), object->certificate);
+        text += " " + std::to_string(object->type) + ":" + (at == certificates.end() ? std::string("?") : std::to_string(at - certificates.begin()));
+    }
+    return text;
+}
+
+std::string References(const std::vector<const LibreSslX509*>& certificates) {
+    std::string text = " refs";
+    for (const auto* certificate : certificates) text += " " + std::to_string(certificate->references);
+    return text;
+}
+
+bool SameSubject(const LibreSslX509Name* left, const LibreSslX509Name* right) {
+    return left->canonEnclen == right->canonEnclen && (left->canonEnclen == 0 || std::memcmp(left->canonEnc, right->canonEnc, static_cast<std::size_t>(left->canonEnclen)) == 0);
+}
+
+void CompareStores() {
+    faulty = false;
+    for (int round = 0; round < 3000; ++round) {
+        std::vector<LibreSslX509*> mine;
+        std::vector<void*> theirs;
+        const unsigned wanted = 1 + Pick(14);
+        while (mine.size() < wanted) {
+            const Der der = Certificate();
+            const unsigned char* in = der.data();
+            LibreSslX509* certificate = d2i_X509_nid_postfix(nullptr, &in, static_cast<std::int64_t>(der.size()));
+            in = der.data();
+            void* reference = LibreSslReference::D2iX509(nullptr, &in, static_cast<long>(der.size()));
+            if (certificate && reference) {
+                mine.push_back(certificate);
+                theirs.push_back(reference);
+                continue;
+            }
+            if (certificate) X509_free_nid_postfix(certificate);
+            if (reference) LibreSslReference::X509Free(reference);
+        }
+        ERR_clear_error_nid_postfix();
+        LibreSslReference::ErrClearError();
+        const std::vector<const LibreSslX509*> mineView(mine.begin(), mine.end());
+        std::vector<const LibreSslX509*> theirView;
+        for (void* certificate : theirs) theirView.push_back(static_cast<const LibreSslX509*>(certificate));
+        auto* mineStore = X509_STORE_new_nid_postfix();
+        void* theirStore = LibreSslReference::X509StoreNew();
+        std::vector<const LibreSslX509Name*> added;
+        std::string mineLog;
+        std::string theirLog;
+        for (std::size_t index = 0; index < mine.size(); ++index) {
+            const auto* subject = mine[index]->certificateInfo->subject;
+            if (std::any_of(added.begin(), added.end(), [&](const LibreSslX509Name* name) { return SameSubject(name, subject); })) continue;
+            added.push_back(subject);
+            const bool none = Chance(5);
+            std::string mineStep;
+            const auto error = Attempt([&] { mineStep = std::to_string(X509_STORE_add_cert_nid_postfix(mineStore, none ? nullptr : mine[index])); });
+            mineLog += " add " + (error.empty() ? mineStep : error) + Errors(ERR_get_error_nid_postfix) + " " + DescribeStore(static_cast<const LibreSslStack*>(mineStore->objects), mineView);
+            const int theirResult = LibreSslReference::X509StoreAddCert(theirStore, none ? nullptr : theirs[index]);
+            theirLog += " add " + std::to_string(theirResult) + Errors(LibreSslReference::ErrGetError) + " " +
+                DescribeStore(static_cast<const LibreSslStack*>(LibreSslReference::X509StoreObjects(theirStore)), theirView);
+        }
+        mineLog += References(mineView);
+        theirLog += References(theirView);
+        X509_STORE_free_nid_postfix(mineStore);
+        LibreSslReference::X509StoreFree(theirStore);
+        mineLog += " freed" + References(mineView);
+        theirLog += " freed" + References(theirView);
+        Record("X509_STORE_add_cert", mineLog == theirLog, [&] { return "\n      mine  " + mineLog + "\n      theirs" + theirLog; });
+        for (auto* certificate : mine) X509_free_nid_postfix(certificate);
+        for (void* certificate : theirs) LibreSslReference::X509Free(certificate);
+    }
+}
+
 }
 
 int main() {
@@ -619,6 +702,7 @@ int main() {
     CompareDesParity();
     CompareStrings();
     CompareCertificates();
+    CompareStores();
     long cases = 0;
     long differing = 0;
     for (const auto& [function, count] : counts) {

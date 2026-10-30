@@ -81,6 +81,10 @@ const char* OcspResponseStatusString(long status) { return OCSP_response_status_
 
 void* D2iX509(void** certificate, const unsigned char** in, long length) { return d2i_X509(reinterpret_cast<X509**>(certificate), in, length); }
 void X509Free(void* certificate) { X509_free(static_cast<X509*>(certificate)); }
+void* X509StoreNew() { return X509_STORE_new(); }
+void X509StoreFree(void* store) { X509_STORE_free(static_cast<X509_STORE*>(store)); }
+int X509StoreAddCert(void* store, void* certificate) { return X509_STORE_add_cert(static_cast<X509_STORE*>(store), static_cast<X509*>(certificate)); }
+void* X509StoreObjects(void* store) { return static_cast<X509_STORE*>(store)->objs; }
 unsigned long ErrGetError() { return ERR_get_error(); }
 void ErrClearError() { ERR_clear_error(); }
 
