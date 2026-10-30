@@ -1394,11 +1394,6 @@ int APS5_VABI X509_EXTENSION_get_object_nid_postfix(void) {
     return 0;
 }
 
-int APS5_VABI X509_INFO_free_nid_postfix(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
 int APS5_VABI X509_NAME_print_ex_nid_postfix(void) {
     NotImplemented_nid_no_patch(__func__);
     return 0;

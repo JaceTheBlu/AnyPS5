@@ -22,6 +22,8 @@ static_assert(sizeof(LibreSslAsn1Encoding) == 24 && offsetof(LibreSslAsn1Encodin
 static_assert(sizeof(LibreSslX509CertificateInfo) == 104 && offsetof(LibreSslX509CertificateInfo, extensions) == 72 && offsetof(LibreSslX509CertificateInfo, encoding) == 80);
 static_assert(sizeof(LibreSslX509) == 176 && offsetof(LibreSslX509, references) == 28 && offsetof(LibreSslX509, name) == 32);
 static_assert(offsetof(LibreSslX509, exData) == 40 && offsetof(LibreSslX509, pathLength) == 48 && offsetof(LibreSslX509, extensionFlags) == 64);
+static_assert(sizeof(LibreSslX509Info) == 72 && offsetof(LibreSslX509Info, iv) == 32 && offsetof(LibreSslX509Info, encryptedLength) == 48);
+static_assert(offsetof(LibreSslX509Info, encryptedData) == 56 && offsetof(LibreSslX509Info, references) == 64);
 static_assert(offsetof(LibreSslX509, subjectKeyId) == 96 && offsetof(LibreSslX509, nameConstraints) == 136 && offsetof(LibreSslX509, sha1Hash) == 144 && offsetof(LibreSslX509, auxiliary) == 168);
 
 namespace {
@@ -1745,6 +1747,17 @@ LibreSslX509* APS5_VABI d2i_X509_nid_postfix(LibreSslX509** certificate, const u
 
 void APS5_VABI X509_free_nid_postfix(LibreSslX509* certificate) {
     FreeValue(certificate, CertificateItem);
+}
+
+void APS5_VABI X509_INFO_free_nid_postfix(LibreSslX509Info* info) {
+    if (!info) return;
+    std::atomic_ref<std::int32_t> references(info->references);
+    if (references.load() <= 1 && info->crl) NotImplemented_nid_no_patch("X509_INFO_free of an X509_CRL");
+    if (references.load() <= 1 && info->privateKey) NotImplemented_nid_no_patch("X509_INFO_free of an X509_PKEY");
+    if (references.fetch_sub(1) - 1 > 0) return;
+    X509_free_nid_postfix(info->certificate);
+    free_nid_postfix(info->encryptedData);
+    free_nid_postfix(info);
 }
 
 }
