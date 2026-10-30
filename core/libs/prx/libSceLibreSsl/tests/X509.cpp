@@ -9,6 +9,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -227,6 +228,116 @@ void Errors() {
         {134, 58, 58, 58}, "an invalid UTF8String name value");
 }
 
+Bytes Encode(LibreSslX509PublicKey* key) {
+    const int length = i2d_X509_PUBKEY_nid_postfix(key, nullptr);
+    unsigned char* allocated = nullptr;
+    Require(i2d_X509_PUBKEY_nid_postfix(key, &allocated) == length, "the allocating form returns the same length");
+    Require((length > 0) == (allocated != nullptr), "a buffer is allocated only for a nonempty encoding");
+    Bytes buffer(static_cast<std::size_t>(length) + 4, 0xcc);
+    unsigned char* out = buffer.data() + 2;
+    Require(i2d_X509_PUBKEY_nid_postfix(key, &out) == length && out == buffer.data() + 2 + length, "the caller's buffer is filled and advanced");
+    Require(buffer[0] == 0xcc && buffer[1] == 0xcc && buffer[buffer.size() - 2] == 0xcc && buffer.back() == 0xcc, "nothing is written outside the encoding");
+    const Bytes encoded(buffer.begin() + 2, buffer.end() - 2);
+    if (allocated) {
+        Require(std::memcmp(allocated, encoded.data(), encoded.size()) == 0, "both forms write the same encoding");
+        free_nid_postfix(allocated);
+    }
+    return encoded;
+}
+
+Bytes Key(const Bytes& parameter, const Bytes& bits) {
+    return Tlv(0x30, Cat({Tlv(0x30, Cat({Tlv(0x06, RsaEncryption), parameter})), bits}));
+}
+
+void Throws(LibreSslX509PublicKey* key, const char* message) {
+    bool threw = false;
+    try {
+        i2d_X509_PUBKEY_nid_postfix(key, nullptr);
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    Require(threw, message);
+}
+
+void PublicKeyEncoding() {
+    LibreSslX509* certificate = Decode(Signed(Info()));
+    LibreSslX509PublicKey* key = certificate->certificateInfo->key;
+    Require(Encode(key) == PublicKey(), "a decoded key encodes back to its DER");
+    unsigned char* out = nullptr;
+    Require(i2d_X509_PUBKEY_nid_postfix(nullptr, &out) == 0 && !out && i2d_X509_PUBKEY_nid_postfix(nullptr, nullptr) == 0, "a null key encodes to nothing");
+
+    LibreSslX509Algorithm* algorithm = key->algorithm;
+    LibreSslAsn1Type* parameter = algorithm->parameter;
+    algorithm->parameter = nullptr;
+    Require(Encode(key) == Key({}, Tlv(0x03, {0x00, 0x30, 0x03, 0x02, 0x01, 0x05})), "a null parameter is omitted");
+    algorithm->parameter = parameter;
+    LibreSslAsn1Object* object = algorithm->algorithm;
+    algorithm->algorithm = nullptr;
+    Require(Encode(key) == Tlv(0x30, Cat({Tlv(0x30, Tlv(0x05, {})), Tlv(0x03, {0x00, 0x30, 0x03, 0x02, 0x01, 0x05})})), "a null algorithm object is omitted");
+    algorithm->algorithm = object;
+    key->algorithm = nullptr;
+    Require(Encode(key) == Tlv(0x30, Tlv(0x03, {0x00, 0x30, 0x03, 0x02, 0x01, 0x05})), "a null algorithm is omitted");
+    key->algorithm = algorithm;
+    Asn1String* bits = key->publicKey;
+    key->publicKey = nullptr;
+    Require(Encode(key) == Tlv(0x30, Tlv(0x30, Cat({Tlv(0x06, RsaEncryption), Tlv(0x05, {})}))), "a null public key is omitted");
+
+    unsigned char data[] = {0xff, 0xa0, 0x00};
+    Asn1String string{3, 3, data, 0};
+    key->publicKey = &string;
+    Require(Encode(key) == Key(Tlv(0x05, {}), Tlv(0x03, {0x05, 0xff, 0xa0})), "without BITS_LEFT, trailing zero bytes are dropped and the unused bits counted");
+    string.flags = 0x08 | 3;
+    Require(Encode(key) == Key(Tlv(0x05, {}), Tlv(0x03, {0x03, 0xff, 0xa0, 0x00})), "with BITS_LEFT, the unused bits are cleared");
+    string.length = 0;
+    Require(Encode(key) == Key(Tlv(0x05, {}), Tlv(0x03, {0x00})), "an empty bit string has no unused bits");
+    unsigned char zeros[] = {0x00, 0x00};
+    Asn1String zero{2, 3, zeros, 0};
+    key->publicKey = &zero;
+    Throws(key, "an all-zero bit string without BITS_LEFT throws");
+    key->publicKey = bits;
+
+    const std::int32_t type = parameter->type;
+    void* const value = parameter->value;
+    const auto encodeAs = [&](std::int32_t newType, void* newValue) {
+        parameter->type = newType;
+        parameter->value = newValue;
+        return Encode(key);
+    };
+    const Bytes publicKey = Tlv(0x03, {0x00, 0x30, 0x03, 0x02, 0x01, 0x05});
+    Require(encodeAs(1, reinterpret_cast<void*>(0x1ff)) == Key(Tlv(0x01, {0xff}), publicKey), "a boolean parameter keeps its low byte");
+    Require(encodeAs(1, reinterpret_cast<void*>(0xffffffff)) == Key({}, publicKey), "a boolean parameter of -1 is omitted");
+    unsigned char integerData[] = {0x80, 0x01};
+    Asn1String integer{1, 2, integerData, 0};
+    Require(encodeAs(2, &integer) == Key(Tlv(0x02, {0x00, 0x80}), publicKey), "a positive integer with the high bit set is padded");
+    integer.type = 0x102;
+    Require(encodeAs(2, &integer) == Key(Tlv(0x02, {0x80}), publicKey), "the negative of 0x80 is not padded");
+    integer.length = 2;
+    Require(encodeAs(10, &integer) == Key(Tlv(0x0a, {0xff, 0x7f, 0xff}), publicKey), "a negative enumerated value is padded and complemented");
+    integerData[0] = 0x01;
+    integerData[1] = 0x00;
+    Require(encodeAs(2, &integer) == Key(Tlv(0x02, {0xff, 0x00}), publicKey), "trailing zero bytes of a negative integer stay zero");
+    integer.length = 0;
+    Require(encodeAs(2, &integer) == Key(Tlv(0x02, {0x00}), publicKey), "an empty integer encodes as zero");
+    Require(encodeAs(2, nullptr) == Key(Tlv(0x02, {}), publicKey), "a null integer has no content");
+    integer.length = 2;
+    integerData[0] = 0x00;
+    parameter->type = 2;
+    parameter->value = &integer;
+    Throws(key, "a negative zero integer throws");
+    unsigned char raw[] = {0x30, 0x03, 0x02, 0x01, 0x07};
+    Asn1String sequence{5, 16, raw, 0};
+    Require(encodeAs(16, &sequence) == Key(Bytes(std::begin(raw), std::end(raw)), publicKey), "a SEQUENCE parameter is written as is");
+    Require(encodeAs(-3, &sequence) == Key(Bytes(std::begin(raw), std::end(raw)), publicKey), "an OTHER parameter is written as is");
+    Require(encodeAs(40, &sequence) == Key(Cat({{0x1f, 0x28, 0x05}, Bytes(std::begin(raw), std::end(raw))}), publicKey), "a high tag number uses the long form");
+    Require(encodeAs(6, object) == Key(Tlv(0x06, RsaEncryption), publicKey), "an object parameter writes its content");
+    parameter->type = 12;
+    parameter->value = nullptr;
+    Throws(key, "a null string parameter throws");
+    parameter->type = type;
+    parameter->value = value;
+    X509_free_nid_postfix(certificate);
+}
+
 std::set<void*> live;
 int failAt = 0;
 int calls = 0;
@@ -316,4 +427,5 @@ int main(int argc, char**) {
     References();
     Ber();
     Errors();
+    PublicKeyEncoding();
 }

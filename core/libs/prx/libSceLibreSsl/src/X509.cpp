@@ -1428,8 +1428,8 @@ void PutLength(std::vector<unsigned char>& out, int length) {
     for (int index = count - 1; index >= 0; --index) out.push_back(static_cast<unsigned char>(length >> (8 * index)));
 }
 
-void PutHeader(std::vector<unsigned char>& out, bool constructed, std::size_t length, int tag) {
-    const int leading = constructed ? Constructed : 0;
+void PutHeader(std::vector<unsigned char>& out, bool constructed, std::size_t length, int tag, int tagClass = Universal) {
+    const int leading = (constructed ? Constructed : 0) | (tagClass & ClassMask);
     if (tag < 31) {
         out.push_back(static_cast<unsigned char>(leading | (tag & HighTag)));
     } else {
@@ -1661,6 +1661,188 @@ int PublicKeyCallback(Operation operation, Value* value) {
     return 1;
 }
 
+using Encoding = std::vector<unsigned char>;
+
+const unsigned char* Contents(const Asn1String* string, const char* function) {
+    if (string->length < 0) throw std::invalid_argument(std::string(function) + ": negative string length");
+    if (!string->data && string->length) throw std::invalid_argument(std::string(function) + ": null string data with a nonzero length");
+    return string->data;
+}
+
+void PutBitString(const Asn1String* string, Encoding& out) {
+    if (!string) return;
+    const unsigned char* data = Contents(string, "i2c_ASN1_BIT_STRING");
+    int length = string->length;
+    int bits = 0;
+    if (length > 0) {
+        if (string->flags & BitsLeft) {
+            bits = static_cast<int>(string->flags & 0x07);
+        } else {
+            while (length > 0 && !data[length - 1]) --length;
+            if (!length) NotImplemented_nid_no_patch("i2c_ASN1_BIT_STRING of zero bits without ASN1_STRING_FLAG_BITS_LEFT, where LibreSSL reads before the data");
+            while (!(data[length - 1] & (1 << bits))) ++bits;
+        }
+    }
+    out.push_back(static_cast<unsigned char>(bits));
+    out.insert(out.end(), data, data + length);
+    if (length > 0) out.back() &= static_cast<unsigned char>(0xff << bits);
+}
+
+void PutInteger(const Asn1String* integer, Encoding& out) {
+    if (!integer) return;
+    const unsigned char* data = Contents(integer, "i2c_ASN1_INTEGER");
+    const int length = integer->length;
+    const bool negative = integer->type & Negative;
+    if (!length) {
+        out.push_back(0);
+        return;
+    }
+    if (!negative) {
+        if (data[0] > 127) out.push_back(0);
+        out.insert(out.end(), data, data + length);
+        return;
+    }
+    if (std::all_of(data, data + length, [](unsigned char byte) { return byte == 0; }))
+        NotImplemented_nid_no_patch("i2c_ASN1_INTEGER of a negative zero, where LibreSSL reads before the data");
+    if (data[0] > 128 || (data[0] == 128 && std::any_of(data + 1, data + length, [](unsigned char byte) { return byte != 0; }))) out.push_back(0xff);
+    const std::size_t start = out.size();
+    out.resize(start + static_cast<std::size_t>(length));
+    int index = length - 1;
+    for (; !data[index]; --index) out[start + index] = 0;
+    out[start + index] = static_cast<unsigned char>((data[index] ^ 0xff) + 1);
+    while (index-- > 0) out[start + index] = data[index] ^ 0xff;
+}
+
+bool PrimitiveContent(Value* value, Encoding& content, int* type, const Item& item) {
+    if ((item.kind != Kind::Primitive || item.type != Boolean) && !*value) return false;
+    if (item.kind == Kind::MultiString) {
+        *type = static_cast<Asn1String*>(*value)->type;
+    } else if (item.type == Any) {
+        auto* any = static_cast<LibreSslAsn1Type*>(*value);
+        *type = any->type;
+        value = &any->value;
+    }
+    switch (*type) {
+    case Object: {
+        const auto* object = static_cast<const LibreSslAsn1Object*>(*value);
+        if (!object) throw std::invalid_argument("i2d: null ASN1_OBJECT in an ASN1_TYPE");
+        if (object->length < 0 || (!object->data && object->length)) throw std::invalid_argument("i2d: ASN1_OBJECT without its content");
+        content.insert(content.end(), object->data, object->data + object->length);
+        return true;
+    }
+    case Null:
+        return true;
+    case Boolean: {
+        const std::int32_t flag = *reinterpret_cast<const std::int32_t*>(value);
+        if (flag == -1) return false;
+        if (item.type != Any && ((flag && item.size > 0) || (!flag && !item.size))) return false;
+        content.push_back(static_cast<unsigned char>(flag));
+        return true;
+    }
+    case BitString:
+        PutBitString(static_cast<const Asn1String*>(*value), content);
+        return true;
+    case Integer:
+    case Enumerated:
+        PutInteger(static_cast<const Asn1String*>(*value), content);
+        return true;
+    default: {
+        const auto* string = static_cast<const Asn1String*>(*value);
+        if (!string) throw std::invalid_argument("i2d: null ASN1_STRING in an ASN1_TYPE");
+        const unsigned char* data = Contents(string, "i2d");
+        content.insert(content.end(), data, data + string->length);
+        return true;
+    }
+    }
+}
+
+void PrimitiveEncode(Value* value, Encoding& out, const Item& item, int tag, int tagClass) {
+    int type = static_cast<int>(item.type);
+    Encoding content;
+    if (!PrimitiveContent(value, content, &type, item)) return;
+    if (type == Sequence || type == Set || type == Other) {
+        out.insert(out.end(), content.begin(), content.end());
+        return;
+    }
+    PutHeader(out, false, content.size(), tag == -1 ? type : tag, tagClass);
+    out.insert(out.end(), content.begin(), content.end());
+}
+
+void ItemEncode(Value* value, Encoding& out, const Item& item, int tag, int tagClass);
+
+void TemplateEncode(Value* value, Encoding& out, const Template& field, int tag, int tagClass) {
+    if (field.flags & StackMask) NotImplemented_nid_no_patch("i2d of a SET OF or SEQUENCE OF field");
+    int fieldTag = -1;
+    int fieldClass = 0;
+    if (field.flags & (ImplicitTag | ExplicitTag)) {
+        if (tag != -1) NotImplemented_nid_no_patch("i2d of a tagged field with an outer IMPLICIT tag");
+        fieldTag = field.tag;
+        fieldClass = static_cast<int>(field.flags & ClassMask);
+    } else if (tag != -1) {
+        fieldTag = tag;
+        fieldClass = tagClass & ClassMask;
+    }
+    if (!(field.flags & ExplicitTag)) {
+        ItemEncode(value, out, *field.item, fieldTag, fieldClass);
+        return;
+    }
+    Encoding inner;
+    ItemEncode(value, inner, *field.item, -1, 0);
+    if (inner.empty()) return;
+    PutHeader(out, true, inner.size(), fieldTag, fieldClass);
+    out.insert(out.end(), inner.begin(), inner.end());
+}
+
+void ItemEncode(Value* value, Encoding& out, const Item& item, int tag, int tagClass) {
+    if (item.kind != Kind::Primitive && !*value) return;
+    switch (item.kind) {
+    case Kind::Primitive:
+        if (item.templates) {
+            TemplateEncode(value, out, *item.templates, tag, tagClass);
+            return;
+        }
+        PrimitiveEncode(value, out, item, tag, tagClass);
+        return;
+    case Kind::MultiString:
+        PrimitiveEncode(value, out, item, -1, tagClass);
+        return;
+    case Kind::Extern:
+        NotImplemented_nid_no_patch("i2d of an X509_NAME");
+    case Kind::Sequence: {
+        if (item.encodingOffset >= 0) NotImplemented_nid_no_patch("i2d of a SEQUENCE with a cached encoding");
+        if (tag == -1) {
+            tag = Sequence;
+            tagClass = Universal;
+        }
+        Encoding content;
+        for (int index = 0; index < item.count; ++index) TemplateEncode(Field(value, item.templates[index]), content, item.templates[index], -1, 0);
+        PutHeader(out, true, content.size(), tag, tagClass);
+        out.insert(out.end(), content.begin(), content.end());
+        return;
+    }
+    }
+}
+
+int ItemToDer(Value value, unsigned char** out, const Item& item) {
+    Encoding encoding;
+    ItemEncode(&value, encoding, item, -1, 0);
+    if (encoding.size() > INT_MAX) NotImplemented_nid_no_patch("i2d of an encoding longer than INT_MAX");
+    const int length = static_cast<int>(encoding.size());
+    if (out && !*out) {
+        if (!length) return 0;
+        auto* buffer = static_cast<unsigned char*>(malloc_nid_postfix(encoding.size()));
+        if (!buffer) return -1;
+        std::memcpy(buffer, encoding.data(), encoding.size());
+        *out = buffer;
+        return length;
+    }
+    if (out) {
+        std::memcpy(*out, encoding.data(), encoding.size());
+        *out += length;
+    }
+    return length;
+}
+
 const Item IntegerItem{.kind = Kind::Primitive, .type = Integer};
 const Item ObjectItem{.kind = Kind::Primitive, .type = Object};
 const Item BooleanItem{.kind = Kind::Primitive, .type = Boolean, .size = -1};
@@ -1745,6 +1927,10 @@ LibreSslX509* APS5_VABI d2i_X509_nid_postfix(LibreSslX509** certificate, const u
 
 void APS5_VABI X509_free_nid_postfix(LibreSslX509* certificate) {
     FreeValue(certificate, CertificateItem);
+}
+
+int APS5_VABI i2d_X509_PUBKEY_nid_postfix(LibreSslX509PublicKey* key, unsigned char** out) {
+    return ItemToDer(key, out, PublicKeyItem);
 }
 
 }

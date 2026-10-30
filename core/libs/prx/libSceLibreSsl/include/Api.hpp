@@ -675,7 +675,7 @@ int APS5_VABI d2i_PKCS12_fp_nid_postfix(void);
 int APS5_VABI d2i_RSA_PUBKEY_nid_postfix(void);
 LibreSslX509* APS5_VABI d2i_X509_nid_postfix(LibreSslX509** certificate, const unsigned char** input, std::int64_t length);
 int APS5_VABI i2a_ASN1_OBJECT_nid_postfix(void);
-int APS5_VABI i2d_X509_PUBKEY_nid_postfix(void);
+int APS5_VABI i2d_X509_PUBKEY_nid_postfix(LibreSslX509PublicKey* key, unsigned char** out);
 int APS5_VABI i2t_ASN1_OBJECT_nid_postfix(char* buffer, int length, const LibreSslAsn1Object* object);
 int APS5_VABI sceLibreSslGetMemoryPoolStats(void);
 int APS5_VABI sceLibreSslInit(void);

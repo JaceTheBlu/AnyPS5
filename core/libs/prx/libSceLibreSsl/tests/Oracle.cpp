@@ -1,5 +1,6 @@
 #include "prx/libSceLibreSsl/include/Api.hpp"
 #include "prx/libSceLibreSsl3/include/Api.hpp"
+#include "prx/libc/include/Api.hpp"
 #include "prx/libc/include/ApplicationHeap.hpp"
 #include <algorithm>
 #include <array>
@@ -38,6 +39,8 @@ const char* OcspCrlReasonString(long reason);
 const char* OcspResponseStatusString(long status);
 void* D2iX509(void** certificate, const unsigned char** in, long length);
 void X509Free(void* certificate);
+int I2dX509Pubkey(void* key, unsigned char** out);
+void Free(void* pointer);
 unsigned long ErrGetError();
 void ErrClearError();
 }
@@ -608,6 +611,159 @@ void CompareCertificates() {
     }
 }
 
+struct Saved {
+    LibreSslX509Algorithm* algorithm;
+    LibreSslAsn1Object* object;
+    LibreSslAsn1Type* parameter;
+    std::int32_t type;
+    void* value;
+    Asn1String* bits;
+    std::int64_t flags;
+    std::int32_t stringType;
+};
+
+bool StringParameter(const LibreSslAsn1Type* parameter) {
+    return parameter && parameter->type != 1 && parameter->type != 5 && parameter->type != 6 && parameter->value;
+}
+
+Saved Save(LibreSslX509PublicKey* key) {
+    Saved saved{key->algorithm, key->algorithm->algorithm, key->algorithm->parameter, 0, nullptr, key->publicKey, key->publicKey->flags, 0};
+    if (saved.parameter) {
+        saved.type = saved.parameter->type;
+        saved.value = saved.parameter->value;
+        if (StringParameter(saved.parameter)) saved.stringType = static_cast<Asn1String*>(saved.value)->type;
+    }
+    return saved;
+}
+
+void Restore(LibreSslX509PublicKey* key, const Saved& saved) {
+    key->algorithm = saved.algorithm;
+    key->algorithm->algorithm = saved.object;
+    key->algorithm->parameter = saved.parameter;
+    key->publicKey = saved.bits;
+    key->publicKey->flags = saved.flags;
+    if (!saved.parameter) return;
+    saved.parameter->type = saved.type;
+    saved.parameter->value = saved.value;
+    if (saved.stringType) static_cast<Asn1String*>(saved.value)->type = saved.stringType;
+}
+
+bool Zero(const Asn1String* string) {
+    return std::all_of(string->data, string->data + string->length, [](unsigned char byte) { return byte == 0; });
+}
+
+bool Unencodable(const LibreSslAsn1Type* parameter) {
+    if (!StringParameter(parameter)) return false;
+    const auto* string = static_cast<const Asn1String*>(parameter->value);
+    if (!Zero(string)) return false;
+    if (parameter->type == 2 || parameter->type == 10) return string->type & 0x100;
+    return parameter->type == 3 && string->length && !(string->flags & 0x08);
+}
+
+std::string MutateKey(LibreSslX509PublicKey* key, unsigned kind, unsigned choice, std::int64_t number) {
+    static constexpr std::int32_t stringTypes[] = {2, 10, 3, 4, 16, 17, -3, 12, 19, 30, 31, 40, 200, 0x1f};
+    auto* parameter = key->algorithm->parameter;
+    switch (kind) {
+    case 1:
+        if (!StringParameter(parameter)) return "unchanged";
+        parameter->type = stringTypes[choice % std::size(stringTypes)];
+        return "type " + std::to_string(parameter->type);
+    case 2:
+        if (!parameter) return "unchanged";
+        parameter->type = choice % 3 == 0 ? 5 : 1;
+        parameter->value = reinterpret_cast<void*>(choice % 3 == 2 ? static_cast<std::int64_t>(0xffffffff) : number);
+        return "type " + std::to_string(parameter->type) + " value " + std::to_string(reinterpret_cast<std::int64_t>(parameter->value));
+    case 3:
+        if (!StringParameter(parameter)) return "unchanged";
+        static_cast<Asn1String*>(parameter->value)->type ^= 0x100;
+        parameter->type = choice % 2 ? 2 : 10;
+        return "negated as " + std::to_string(parameter->type);
+    case 4:
+        key->algorithm->parameter = nullptr;
+        return "no parameter";
+    case 5:
+        key->algorithm->algorithm = nullptr;
+        return "no object";
+    case 6:
+        key->algorithm = nullptr;
+        return "no algorithm";
+    case 7:
+        key->publicKey = nullptr;
+        return "no bits";
+    case 8:
+        key->publicKey->flags = choice % 3 ? 0x08 | (number & 7) : 0;
+        return "flags " + std::to_string(key->publicKey->flags);
+    default:
+        return "unchanged";
+    }
+}
+
+bool Encodable(const LibreSslX509PublicKey* key) {
+    if (key->algorithm && Unencodable(key->algorithm->parameter)) return false;
+    return !key->publicKey || key->publicKey->flags & 0x08 || !key->publicKey->length || !Zero(key->publicKey);
+}
+
+std::string EncodeKey(void* key, unsigned mode, const std::function<int(void*, unsigned char**)>& encode, const std::function<void(void*)>& release) {
+    if (mode == 0) return std::to_string(encode(key, nullptr));
+    if (mode == 1) {
+        unsigned char* out = nullptr;
+        const int length = encode(key, &out);
+        std::string text = std::to_string(length) + (out ? " " + Hex(out, static_cast<std::size_t>(std::max(length, 0))) : std::string(" null"));
+        if (out) release(out);
+        return text;
+    }
+    Der buffer(4096, 0xcc);
+    unsigned char* out = buffer.data() + 3;
+    const int length = encode(key, &out);
+    return std::to_string(length) + " advanced " + std::to_string(out - buffer.data() - 3) + " " + Hex(buffer.data(), 1096);
+}
+
+void CompareKeyEncodings() {
+    for (int round = 0; round < 40000; ++round) {
+        faulty = Chance(50);
+        const Der der = Certificate();
+        const unsigned char* in = der.data();
+        LibreSslX509* mine = d2i_X509_nid_postfix(nullptr, &in, static_cast<std::int64_t>(der.size()));
+        in = der.data();
+        auto* theirs = static_cast<LibreSslX509*>(LibreSslReference::D2iX509(nullptr, &in, static_cast<long>(der.size())));
+        ERR_clear_error_nid_postfix();
+        LibreSslReference::ErrClearError();
+        if (!mine || !theirs) {
+            if (mine) X509_free_nid_postfix(mine);
+            if (theirs) LibreSslReference::X509Free(theirs);
+            continue;
+        }
+        auto* mineKey = mine->certificateInfo->key;
+        auto* theirKey = theirs->certificateInfo->key;
+        const Saved mineSaved = Save(mineKey);
+        const Saved theirSaved = Save(theirKey);
+        const unsigned kind = Chance(40) ? 0 : 1 + Pick(8);
+        const unsigned choice = Pick(1000);
+        const std::int64_t number = Chance(50) ? Pick(0x300) : static_cast<std::int64_t>(generator() & 0xffffffff);
+        const std::string mutation = MutateKey(mineKey, kind, choice, number);
+        MutateKey(theirKey, kind, choice, number);
+        const unsigned mode = Pick(3);
+        const bool none = Chance(3);
+        if (Encodable(mineKey)) {
+            std::string mineText;
+            const auto error = Attempt([&] {
+                mineText = EncodeKey(none ? nullptr : mineKey, mode, [](void* key, unsigned char** out) { return i2d_X509_PUBKEY_nid_postfix(static_cast<LibreSslX509PublicKey*>(key), out); },
+                    [](void* pointer) { free_nid_postfix(pointer); });
+            });
+            if (!error.empty()) mineText = error;
+            mineText += Errors(ERR_get_error_nid_postfix);
+            const std::string theirText = EncodeKey(none ? nullptr : theirKey, mode, LibreSslReference::I2dX509Pubkey, LibreSslReference::Free) + Errors(LibreSslReference::ErrGetError);
+            Record("i2d_X509_PUBKEY", mineText == theirText,
+                [&] { return Hex(der.data(), der.size()) + " " + mutation + " mode " + std::to_string(mode) + "\n      mine   " + mineText + "\n      theirs " + theirText; });
+        }
+        Restore(mineKey, mineSaved);
+        Restore(theirKey, theirSaved);
+        X509_free_nid_postfix(mine);
+        LibreSslReference::X509Free(theirs);
+    }
+}
+
+
 }
 
 int main() {
@@ -619,6 +775,7 @@ int main() {
     CompareDesParity();
     CompareStrings();
     CompareCertificates();
+    CompareKeyEncodings();
     long cases = 0;
     long differing = 0;
     for (const auto& [function, count] : counts) {

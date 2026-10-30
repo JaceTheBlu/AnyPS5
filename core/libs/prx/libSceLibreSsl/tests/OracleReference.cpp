@@ -81,6 +81,8 @@ const char* OcspResponseStatusString(long status) { return OCSP_response_status_
 
 void* D2iX509(void** certificate, const unsigned char** in, long length) { return d2i_X509(reinterpret_cast<X509**>(certificate), in, length); }
 void X509Free(void* certificate) { X509_free(static_cast<X509*>(certificate)); }
+int I2dX509Pubkey(void* key, unsigned char** out) { return i2d_X509_PUBKEY(static_cast<X509_PUBKEY*>(key), out); }
+void Free(void* pointer) { free(pointer); }
 unsigned long ErrGetError() { return ERR_get_error(); }
 void ErrClearError() { ERR_clear_error(); }
 
