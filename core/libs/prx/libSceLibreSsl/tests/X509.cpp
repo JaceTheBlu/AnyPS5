@@ -7,8 +7,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <initializer_list>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -231,6 +233,46 @@ std::set<void*> live;
 int failAt = 0;
 int calls = 0;
 
+bool ThrowsInvalid(const std::function<void()>& action) {
+    try {
+        action();
+    } catch (const std::invalid_argument&) {
+        return true;
+    }
+    return false;
+}
+
+void Getters() {
+    LibreSslX509* certificate = Decode(Signed(Info()));
+    const auto* tbs = certificate->certificateInfo;
+    Require(X509_get_subject_name_nid_postfix(certificate) == tbs->subject && X509_get_issuer_name_nid_postfix(certificate) == tbs->issuer,
+        "the name getters return the decoded names");
+    Require(X509_get_issuer_name_nid_postfix(certificate)->entries->num == 3 && X509_get_subject_name_nid_postfix(certificate)->entries->num == 1, "each name keeps its entries");
+    Require(X509_get_serialNumber_nid_postfix(certificate) == tbs->serialNumber && Holds(X509_get_serialNumber_nid_postfix(certificate), 2, {0x8f, 0x01}, 0),
+        "the serial getter returns the decoded serial");
+    const auto* critical = ExtensionAt(tbs->extensions, 0);
+    const auto* plain = ExtensionAt(tbs->extensions, 1);
+    Require(X509_EXTENSION_get_critical_nid_postfix(critical) == 1 && X509_EXTENSION_get_critical_nid_postfix(plain) == 0, "a TRUE critical flag gives 1 and an absent one 0");
+    Require(Holds(X509_EXTENSION_get_object_nid_postfix(critical), {0x55, 0x1d, 0x13}) && Holds(X509_EXTENSION_get_object_nid_postfix(plain), {0x55, 0x1d, 0x0f}),
+        "the object getter returns the extension type");
+    Require(X509_EXTENSION_get_data_nid_postfix(critical) == critical->value && Holds(X509_EXTENSION_get_data_nid_postfix(plain), 4, {0x03, 0x02, 0x05, 0xa0}, 0),
+        "the data getter returns the encoded value");
+    for (const int flag : {0, 1, 5, 0xff, -1, -7}) {
+        const LibreSslX509Extension extension{plain->object, flag, plain->value};
+        Require(X509_EXTENSION_get_critical_nid_postfix(&extension) == (flag > 0 ? 1 : 0), "only a positive critical flag counts as critical");
+    }
+    Require(!X509_EXTENSION_get_object_nid_postfix(nullptr) && !X509_EXTENSION_get_data_nid_postfix(nullptr) && X509_EXTENSION_get_critical_nid_postfix(nullptr) == 0,
+        "a null extension gives null and 0");
+    LibreSslX509 empty{};
+    Require(ThrowsInvalid([] { X509_get_subject_name_nid_postfix(nullptr); }) && ThrowsInvalid([] { X509_get_issuer_name_nid_postfix(nullptr); }) &&
+            ThrowsInvalid([] { X509_get_serialNumber_nid_postfix(nullptr); }),
+        "a null certificate throws where LibreSSL faults");
+    Require(ThrowsInvalid([&] { X509_get_subject_name_nid_postfix(&empty); }) && ThrowsInvalid([&] { X509_get_issuer_name_nid_postfix(&empty); }) &&
+            ThrowsInvalid([&] { X509_get_serialNumber_nid_postfix(&empty); }),
+        "a certificate without cert_info throws where LibreSSL faults");
+    X509_free_nid_postfix(certificate);
+}
+
 void* Track(void* pointer) {
     if (pointer) live.insert(pointer);
     return pointer;
@@ -316,4 +358,5 @@ int main(int argc, char**) {
     References();
     Ber();
     Errors();
+    Getters();
 }

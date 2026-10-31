@@ -38,6 +38,12 @@ const char* OcspCrlReasonString(long reason);
 const char* OcspResponseStatusString(long status);
 void* D2iX509(void** certificate, const unsigned char** in, long length);
 void X509Free(void* certificate);
+void* X509GetSubjectName(void* certificate);
+void* X509GetIssuerName(void* certificate);
+void* X509GetSerialNumber(void* certificate);
+void* X509ExtensionGetObject(void* extension);
+void* X509ExtensionGetData(void* extension);
+int X509ExtensionGetCritical(void* extension);
 int ObjCreate(const char* oid, const char* shortName, const char* longName);
 void ObjCleanup();
 int I2tAsn1Object(char* buffer, int length, const void* object);
@@ -696,6 +702,51 @@ void CompareCreatedObjects() {
     LibreSslReference::ObjCleanup();
 }
 
+std::string DescribeExtensions(const LibreSslStack* extensions, LibreSslAsn1Object* (*object)(void*), Asn1String* (*data)(void*), int (*critical)(void*)) {
+    std::string text = " " + std::to_string(critical(nullptr)) + (object(nullptr) ? " object" : " noobject") + (data(nullptr) ? " data" : " nodata");
+    for (int index = 0; extensions && index < extensions->num; ++index) {
+        void* extension = extensions->data[index];
+        text += " E(" + Describe(object(extension)) + "," + std::to_string(critical(extension)) + "," + Describe(data(extension)) + ")";
+    }
+    return text;
+}
+
+void CompareGetters() {
+    for (int round = 0; round < 20000; ++round) {
+        faulty = Chance(40);
+        Der der = Certificate();
+        if (faulty && Chance(70)) der = Mutate(der);
+        const unsigned char* in = der.data();
+        LibreSslX509* mine = d2i_X509_nid_postfix(nullptr, &in, static_cast<std::int64_t>(der.size()));
+        in = der.data();
+        void* theirs = LibreSslReference::D2iX509(nullptr, &in, static_cast<long>(der.size()));
+        ERR_clear_error_nid_postfix();
+        LibreSslReference::ErrClearError();
+        if (!mine || !theirs) {
+            Record("X509 getters (certificate)", !mine == !theirs, [&] { return Hex(der.data(), der.size()); });
+            if (mine) X509_free_nid_postfix(mine);
+            if (theirs) LibreSslReference::X509Free(theirs);
+            continue;
+        }
+        const std::string mineText = Describe(X509_get_subject_name_nid_postfix(mine)) + " " + Describe(X509_get_issuer_name_nid_postfix(mine)) + " " +
+            Describe(X509_get_serialNumber_nid_postfix(mine)) +
+            DescribeExtensions(
+                mine->certificateInfo->extensions, [](void* extension) { return X509_EXTENSION_get_object_nid_postfix(static_cast<const LibreSslX509Extension*>(extension)); },
+                [](void* extension) { return X509_EXTENSION_get_data_nid_postfix(static_cast<const LibreSslX509Extension*>(extension)); },
+                [](void* extension) { return X509_EXTENSION_get_critical_nid_postfix(static_cast<const LibreSslX509Extension*>(extension)); });
+        const std::string theirText = Describe(static_cast<const LibreSslX509Name*>(LibreSslReference::X509GetSubjectName(theirs))) + " " +
+            Describe(static_cast<const LibreSslX509Name*>(LibreSslReference::X509GetIssuerName(theirs))) + " " +
+            Describe(static_cast<const Asn1String*>(LibreSslReference::X509GetSerialNumber(theirs))) +
+            DescribeExtensions(
+                static_cast<const LibreSslX509*>(theirs)->certificateInfo->extensions,
+                [](void* extension) { return static_cast<LibreSslAsn1Object*>(LibreSslReference::X509ExtensionGetObject(extension)); },
+                [](void* extension) { return static_cast<Asn1String*>(LibreSslReference::X509ExtensionGetData(extension)); },
+                [](void* extension) { return LibreSslReference::X509ExtensionGetCritical(extension); });
+        Record("X509 getters", mineText == theirText, [&] { return Hex(der.data(), der.size()) + "\n      mine   " + mineText + "\n      theirs " + theirText; });
+        X509_free_nid_postfix(mine);
+        LibreSslReference::X509Free(theirs);
+    }
+}
 }
 
 int main() {
@@ -707,6 +758,7 @@ int main() {
     CompareDesParity();
     CompareStrings();
     CompareCertificates();
+    CompareGetters();
     CompareCreatedObjects();
     long cases = 0;
     long differing = 0;

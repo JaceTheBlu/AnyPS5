@@ -1372,19 +1372,19 @@ int APS5_VABI X509V3_EXT_print_nid_postfix(void) {
     return 0;
 }
 
-int APS5_VABI X509_EXTENSION_get_critical_nid_postfix(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+int APS5_VABI X509_EXTENSION_get_critical_nid_postfix(const LibreSslX509Extension* extension) {
+    if (!extension) return 0;
+    return extension->critical > 0 ? 1 : 0;
 }
 
-int APS5_VABI X509_EXTENSION_get_data_nid_postfix(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+Asn1String* APS5_VABI X509_EXTENSION_get_data_nid_postfix(const LibreSslX509Extension* extension) {
+    if (!extension) return nullptr;
+    return extension->value;
 }
 
-int APS5_VABI X509_EXTENSION_get_object_nid_postfix(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+LibreSslAsn1Object* APS5_VABI X509_EXTENSION_get_object_nid_postfix(const LibreSslX509Extension* extension) {
+    if (!extension) return nullptr;
+    return extension->object;
 }
 
 int APS5_VABI X509_INFO_free_nid_postfix(void) {
@@ -1417,9 +1417,9 @@ int APS5_VABI X509_get_ext_d2i_nid_postfix(void) {
     return 0;
 }
 
-int APS5_VABI X509_get_issuer_name_nid_postfix(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+LibreSslX509Name* APS5_VABI X509_get_issuer_name_nid_postfix(const LibreSslX509* certificate) {
+    if (!certificate || !certificate->certificateInfo) throw std::invalid_argument(std::string(__func__) + ": null certificate");
+    return certificate->certificateInfo->issuer;
 }
 
 int APS5_VABI X509_get_pubkey_nid_postfix(void) {
@@ -1427,14 +1427,14 @@ int APS5_VABI X509_get_pubkey_nid_postfix(void) {
     return 0;
 }
 
-int APS5_VABI X509_get_serialNumber_nid_postfix(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+Asn1String* APS5_VABI X509_get_serialNumber_nid_postfix(const LibreSslX509* certificate) {
+    if (!certificate || !certificate->certificateInfo) throw std::invalid_argument(std::string(__func__) + ": null certificate");
+    return certificate->certificateInfo->serialNumber;
 }
 
-int APS5_VABI X509_get_subject_name_nid_postfix(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+LibreSslX509Name* APS5_VABI X509_get_subject_name_nid_postfix(const LibreSslX509* certificate) {
+    if (!certificate || !certificate->certificateInfo) throw std::invalid_argument(std::string(__func__) + ": null certificate");
+    return certificate->certificateInfo->subject;
 }
 
 int APS5_VABI X509_load_crl_file_nid_postfix(void) {

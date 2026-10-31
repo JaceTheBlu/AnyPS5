@@ -84,6 +84,12 @@ void ObjCleanup() { OBJ_cleanup(); }
 int I2tAsn1Object(char* buffer, int length, const void* object) { return i2t_ASN1_OBJECT(buffer, length, const_cast<ASN1_OBJECT*>(static_cast<const ASN1_OBJECT*>(object))); }
 void* D2iX509(void** certificate, const unsigned char** in, long length) { return d2i_X509(reinterpret_cast<X509**>(certificate), in, length); }
 void X509Free(void* certificate) { X509_free(static_cast<X509*>(certificate)); }
+void* X509GetSubjectName(void* certificate) { return X509_get_subject_name(static_cast<X509*>(certificate)); }
+void* X509GetIssuerName(void* certificate) { return X509_get_issuer_name(static_cast<X509*>(certificate)); }
+void* X509GetSerialNumber(void* certificate) { return X509_get_serialNumber(static_cast<X509*>(certificate)); }
+void* X509ExtensionGetObject(void* extension) { return X509_EXTENSION_get_object(static_cast<X509_EXTENSION*>(extension)); }
+void* X509ExtensionGetData(void* extension) { return X509_EXTENSION_get_data(static_cast<X509_EXTENSION*>(extension)); }
+int X509ExtensionGetCritical(void* extension) { return X509_EXTENSION_get_critical(static_cast<X509_EXTENSION*>(extension)); }
 unsigned long ErrGetError() { return ERR_get_error(); }
 void ErrClearError() { ERR_clear_error(); }
 
