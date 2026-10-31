@@ -83,7 +83,6 @@ const char* OcspCrlReasonString(long reason) { return OCSP_crl_reason_str(reason
 const char* OcspResponseStatusString(long status) { return OCSP_response_status_str(status); }
 int ObjCreate(const char* oid, const char* shortName, const char* longName) { return OBJ_create(oid, shortName, longName); }
 void ObjCleanup() { OBJ_cleanup(); }
-void EvpCleanup() { EVP_cleanup(); }
 void AddAllAlgorithms() { OPENSSL_add_all_algorithms_noconf(); }
 void LoadBuiltinModules() { OPENSSL_load_builtin_modules(); }
 void ConfModulesFree() { CONF_modules_free(); }

@@ -36,7 +36,6 @@ const char* OcspCrlReasonString(long reason);
 const char* OcspResponseStatusString(long status);
 int ObjCreate(const char* oid, const char* shortName, const char* longName);
 void ObjCleanup();
-void EvpCleanup();
 void AddAllAlgorithms();
 void LoadBuiltinModules();
 void ConfModulesFree();
@@ -382,19 +381,14 @@ void CompareCreatedObjects() {
             LibreSslReference::ObjCleanup();
             break;
         case 2:
-        case 3:
-            EVP_cleanup_nid_postfix();
-            LibreSslReference::EvpCleanup();
-            break;
-        case 4:
             OPENSSL_add_all_algorithms_noconf_nid_postfix();
             LibreSslReference::AddAllAlgorithms();
             break;
-        case 5:
+        case 3:
             OPENSSL_load_builtin_modules_nid_postfix();
             LibreSslReference::LoadBuiltinModules();
             break;
-        case 6:
+        case 4:
             CONF_modules_free_nid_postfix();
             LibreSslReference::ConfModulesFree();
             break;

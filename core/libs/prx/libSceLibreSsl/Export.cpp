@@ -691,7 +691,10 @@ int APS5_VABI EVP_aes_256_gcm_nid_postfix(void) {
     return 0;
 }
 
-void APS5_VABI EVP_cleanup_nid_postfix(void) {}
+int APS5_VABI EVP_cleanup_nid_postfix(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
 
 int APS5_VABI EVP_md5_nid_postfix(void) {
     NotImplemented_nid_no_patch(__func__);
