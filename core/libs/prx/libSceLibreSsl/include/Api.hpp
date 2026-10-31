@@ -137,21 +137,6 @@ struct LibreSslStack {
     StackCompare comp;
 };
 
-struct LibreSslX509NameEntry {
-    void* object;
-    void* value;
-    int set;
-    int size;
-};
-
-struct LibreSslX509Name {
-    LibreSslStack* entries;
-    int modified;
-    void* bytes;
-    unsigned char* canonEnc;
-    int canonEnclen;
-};
-
 using UiSessionFunction = int (APS5_VABI*)(void*);
 using UiStringFunction = int (APS5_VABI*)(void*, void*);
 using UiPromptFunction = char* (APS5_VABI*)(void*, const char*, const char*);
@@ -332,6 +317,21 @@ struct LibreSslX509StoreContext {
     unsigned int currentReasons;
     LibreSslX509StoreContext* parent;
     void* exData;
+};
+
+struct LibreSslX509NameEntry {
+    void* object;
+    void* value;
+    int set;
+    int size;
+};
+
+struct LibreSslX509Name {
+    LibreSslStack* entries;
+    int modified;
+    void* bytes;
+    unsigned char* canonEnc;
+    int canonEnclen;
 };
 
 extern "C" {
