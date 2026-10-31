@@ -6,8 +6,6 @@
 #include <string>
 #include "prx/libc/include/General.hpp"
 
-static_assert(sizeof(LibreSslStack) == 32);
-static_assert(offsetof(LibreSslStack, data) == 8);
 static_assert(sizeof(LibreSslX509NameEntry) == 24);
 static_assert(offsetof(LibreSslX509NameEntry, value) == 8);
 static_assert(sizeof(LibreSslX509Name) == 40);
