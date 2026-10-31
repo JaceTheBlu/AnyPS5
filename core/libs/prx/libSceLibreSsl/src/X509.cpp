@@ -3,7 +3,7 @@
  * src/lib/libcrypto/asn1/asn1_lib.c (v 1.38); src/lib/libcrypto/asn1/a_object.c (v 1.29); src/lib/libcrypto/asn1/a_int.c (v 1.31);
  * src/lib/libcrypto/asn1/a_bitstr.c (v 1.24); src/lib/libcrypto/asn1/x_name.c (v 1.33); src/lib/libcrypto/asn1/x_x509.c (v 1.24);
  * src/lib/libcrypto/asn1/x_pubkey.c (v 1.26); src/lib/libcrypto/asn1/x_algor.c (v 1.21); src/lib/libcrypto/asn1/x_val.c (v 1.11);
- * src/lib/libcrypto/asn1/x_exten.c (v 1.16) */
+ * src/lib/libcrypto/asn1/x_exten.c (v 1.16); src/lib/libcrypto/asn1/tasn_enc.c (v 1.21) */
 /* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project 2000.
  */
