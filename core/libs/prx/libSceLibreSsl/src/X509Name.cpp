@@ -30,8 +30,6 @@ struct NameAttribute {
     unsigned char der[10];
 };
 
-constexpr int NidCount = 956;
-
 constexpr NameAttribute NameAttributes[] {
     {0, 0, {}},
     {13, 3, {0x55, 0x04, 0x03}},
@@ -94,7 +92,6 @@ constexpr NameAttribute NameAttributes[] {
 };
 
 const NameAttribute* FindAttribute(int nid, const char* function) {
-    if (nid < 0 || nid >= NidCount) return nullptr;
     for (const auto& attribute : NameAttributes) {
         if (attribute.nid == nid) return &attribute;
     }
@@ -135,13 +132,11 @@ void* APS5_VABI X509_NAME_ENTRY_get_data_nid_postfix(const LibreSslX509NameEntry
 
 int APS5_VABI X509_NAME_get_index_by_NID_nid_postfix(const LibreSslX509Name* name, int nid, int lastpos) {
     const auto* attribute = FindAttribute(nid, __func__);
-    if (!attribute) return -2;
     return IndexOf(name, *attribute, lastpos, __func__);
 }
 
 int APS5_VABI X509_NAME_get_text_by_NID_nid_postfix(const LibreSslX509Name* name, int nid, char* buf, int len) {
     const auto* attribute = FindAttribute(nid, __func__);
-    if (!attribute) return -1;
     const int index = IndexOf(name, *attribute, -1, __func__);
     if (index < 0) return -1;
     const auto* data = static_cast<const Asn1String*>(X509_NAME_ENTRY_get_data_nid_postfix(X509_NAME_get_entry_nid_postfix(name, index)));
