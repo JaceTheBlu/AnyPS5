@@ -12,10 +12,20 @@
 /* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project 2000.
  */
+/* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
+ * project 1999.
+ */
+/* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
+ * project.
+ */
 /* ====================================================================
  * Copyright (c) 2000-2005 The OpenSSL Project.  All rights reserved.
  * Copyright (c) 2000-2004 The OpenSSL Project.  All rights reserved.
  * Copyright (c) 2000 The OpenSSL Project.  All rights reserved.
+ * Copyright (c) 1999 The OpenSSL Project.  All rights reserved.
+ * Copyright (c) 1999-2004 The OpenSSL Project.  All rights reserved.
+ * Copyright (c) 1999-2008 The OpenSSL Project.  All rights reserved.
+ * Copyright (c) 2003 The OpenSSL Project.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
