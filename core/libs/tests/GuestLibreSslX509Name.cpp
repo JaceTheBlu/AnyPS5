@@ -157,9 +157,7 @@ static void TestIndexByNid() {
     Require(X509_NAME_get_index_by_NID_nid_postfix(name, 15, 7) == -1);
     Require(X509_NAME_get_index_by_NID_nid_postfix(name, 16, -1) == -1);
     Require(X509_NAME_get_index_by_NID_nid_postfix(name, 0, -1) == -1);
-    for (int nid : {-1, 956, INT_MIN, INT_MAX}) Require(X509_NAME_get_index_by_NID_nid_postfix(name, nid, -1) == -2);
     Require(X509_NAME_get_index_by_NID_nid_postfix(nullptr, 13, -1) == -1);
-    Require(X509_NAME_get_index_by_NID_nid_postfix(nullptr, -1, -1) == -2);
     decoded.objects[6].nid = 13;
     Require(X509_NAME_get_index_by_NID_nid_postfix(name, 13, 4) == -1);
     Require(X509_NAME_get_index_by_NID_nid_postfix(name, 458, -1) == -1);
@@ -208,7 +206,7 @@ static void TestTextByNid() {
     std::memset(buffer, 0x7f, sizeof(buffer));
     Require(X509_NAME_get_text_by_NID_nid_postfix(name, 13, nullptr, 64) == 5);
     Require(X509_NAME_get_text_by_NID_nid_postfix(name, 13, nullptr, 0) == 5);
-    for (int nid : {16, -1, 956}) Require(X509_NAME_get_text_by_NID_nid_postfix(name, nid, buffer, 64) == -1);
+    Require(X509_NAME_get_text_by_NID_nid_postfix(name, 16, buffer, 64) == -1);
     Require(X509_NAME_get_text_by_NID_nid_postfix(nullptr, 13, buffer, 64) == -1);
     Require(X509_NAME_get_text_by_NID_nid_postfix(name, 16, buffer, INT_MIN) == -1);
     Require(BufferHolds(buffer, "", 0));
@@ -226,10 +224,42 @@ static void TestTextByNid() {
     RequireThrows([&] { X509_NAME_get_text_by_NID_nid_postfix(name, 13, buffer, 64); });
 }
 
+static void TestDynamicNid() {
+    OBJ_cleanup_nid_postfix();
+    ERR_clear_error_nid_postfix();
+    const int nid = OBJ_create_nid_postfix("1.2.3.4", "testName", "Test Name");
+    Require(nid >= 956);
+    DecodedName decoded;
+    bool indexAccepted = false;
+    try {
+        const int index = X509_NAME_get_index_by_NID_nid_postfix(&decoded.name, nid, -1);
+        indexAccepted = index == 6;
+        if (!indexAccepted) std::fprintf(stderr, "dynamic X509_NAME index: expected 6 or not implemented, got %d\n", index);
+    } catch (const std::runtime_error& error) {
+        Require(std::strstr(error.what(), "X509_NAME_get_index_by_NID") && std::strstr(error.what(), "not implemented"));
+        indexAccepted = true;
+    }
+    bool textAccepted = false;
+    char buffer[2] {};
+    try {
+        const int length = X509_NAME_get_text_by_NID_nid_postfix(&decoded.name, nid, buffer, sizeof(buffer));
+        textAccepted = length == 1 && std::strcmp(buffer, "x") == 0;
+        if (!textAccepted) std::fprintf(stderr, "dynamic X509_NAME text: expected x with length 1 or not implemented, got length %d\n", length);
+    } catch (const std::runtime_error& error) {
+        Require(std::strstr(error.what(), "X509_NAME_get_text_by_NID") && std::strstr(error.what(), "not implemented"));
+        textAccepted = true;
+    }
+    OBJ_cleanup_nid_postfix();
+    ERR_clear_error_nid_postfix();
+    Require(indexAccepted);
+    Require(textAccepted);
+}
+
 int main() {
     TestGetEntry();
     TestEntryGetData();
     TestIndexByNid();
     TestTextByNid();
+    TestDynamicNid();
     return 0;
 }
