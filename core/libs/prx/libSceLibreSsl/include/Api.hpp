@@ -217,6 +217,21 @@ struct LibreSslRsa {
     void* mtBlinding;
 };
 
+struct LibreSslX509NameEntry {
+    void* object;
+    void* value;
+    int set;
+    int size;
+};
+
+struct LibreSslX509Name {
+    LibreSslStack* entries;
+    int modified;
+    void* bytes;
+    unsigned char* canonEnc;
+    int canonEnclen;
+};
+
 struct LibreSslAsn1Type {
     std::int32_t type;
     void* value;
@@ -416,21 +431,6 @@ struct LibreSslX509StoreContext {
     unsigned int currentReasons;
     LibreSslX509StoreContext* parent;
     void* exData;
-};
-
-struct LibreSslX509NameEntry {
-    void* object;
-    void* value;
-    int set;
-    int size;
-};
-
-struct LibreSslX509Name {
-    LibreSslStack* entries;
-    int modified;
-    void* bytes;
-    unsigned char* canonEnc;
-    int canonEnclen;
 };
 
 extern "C" {
