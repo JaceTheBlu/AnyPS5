@@ -14,6 +14,8 @@
  */
 /* ====================================================================
  * Copyright (c) 2000-2005 The OpenSSL Project.  All rights reserved.
+ * Copyright (c) 2000-2004 The OpenSSL Project.  All rights reserved.
+ * Copyright (c) 2000 The OpenSSL Project.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
