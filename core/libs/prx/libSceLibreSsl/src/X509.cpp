@@ -3,7 +3,12 @@
  * src/lib/libcrypto/asn1/asn1_lib.c (v 1.38); src/lib/libcrypto/asn1/a_object.c (v 1.29); src/lib/libcrypto/asn1/a_int.c (v 1.31);
  * src/lib/libcrypto/asn1/a_bitstr.c (v 1.24); src/lib/libcrypto/asn1/x_name.c (v 1.33); src/lib/libcrypto/asn1/x_x509.c (v 1.24);
  * src/lib/libcrypto/asn1/x_pubkey.c (v 1.26); src/lib/libcrypto/asn1/x_algor.c (v 1.21); src/lib/libcrypto/asn1/x_val.c (v 1.11);
- * src/lib/libcrypto/asn1/x_exten.c (v 1.16) */
+ * src/lib/libcrypto/asn1/x_exten.c (v 1.16); src/lib/libcrypto/x509/x509_ext.c (v 1.9); src/lib/libcrypto/x509v3/v3_lib.c (v 1.17);
+ * src/lib/libcrypto/x509v3/ext_dat.h (v 1.13); src/lib/libcrypto/x509v3/v3_genn.c (v 1.12); src/lib/libcrypto/x509v3/v3_bcons.c (v 1.15);
+ * src/lib/libcrypto/x509v3/v3_akeya.c (v 1.7); src/lib/libcrypto/x509v3/v3_extku.c (v 1.15); src/lib/libcrypto/x509v3/v3_info.c (v 1.25);
+ * src/lib/libcrypto/x509v3/v3_pku.c (v 1.13); src/lib/libcrypto/x509v3/v3_pcons.c (v 1.11); src/lib/libcrypto/x509v3/v3_pmaps.c (v 1.11);
+ * src/lib/libcrypto/x509v3/v3_ncons.c (v 1.11); src/lib/libcrypto/x509v3/v3_pcia.c (v 1.6); src/lib/libcrypto/x509v3/v3_sxnet.c (v 1.19);
+ * src/lib/libcrypto/x509v3/v3_crld.c (v 1.21); src/lib/libcrypto/x509v3/v3_ocsp.c (v 1.15); src/lib/libcrypto/ocsp/ocsp_asn.c (v 1.9) */
 /* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project 2000.
  */
@@ -116,6 +121,40 @@
  * copied and put under another distribution licence
  * [including the GNU Public Licence.]
  */
+/* Contributed to the OpenSSL Project 2004
+ * by Richard Levitte (richard@levitte.org)
+ */
+/* Copyright (c) 2004 Kungliga Tekniska Högskolan
+ * (Royal Institute of Technology, Stockholm, Sweden).
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the Institute nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE INSTITUTE AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE INSTITUTE OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
 #include "prx/libSceLibreSsl/include/Api.hpp"
 #include "prx/libSceLibreSsl/include/Error.hpp"
 #include "prx/libSceLibreSsl/include/ObjectTable.hpp"
@@ -140,6 +179,16 @@ static_assert(sizeof(LibreSslAsn1Encoding) == 24 && offsetof(LibreSslAsn1Encodin
 static_assert(sizeof(LibreSslX509CertificateInfo) == 104 && offsetof(LibreSslX509CertificateInfo, extensions) == 72 && offsetof(LibreSslX509CertificateInfo, encoding) == 80);
 static_assert(sizeof(LibreSslX509) == 176 && offsetof(LibreSslX509, references) == 28 && offsetof(LibreSslX509, name) == 32);
 static_assert(offsetof(LibreSslX509, exData) == 40 && offsetof(LibreSslX509, pathLength) == 48 && offsetof(LibreSslX509, extensionFlags) == 64);
+static_assert(sizeof(LibreSslGeneralName) == 16 && offsetof(LibreSslGeneralName, value) == 8 && sizeof(LibreSslOtherName) == 16 && sizeof(LibreSslEdiPartyName) == 16);
+static_assert(sizeof(LibreSslBasicConstraints) == 16 && offsetof(LibreSslBasicConstraints, pathLength) == 8 && sizeof(LibreSslAuthorityKeyId) == 24);
+static_assert(sizeof(LibreSslAccessDescription) == 16 && sizeof(LibreSslPrivateKeyUsagePeriod) == 16 && sizeof(LibreSslPolicyConstraints) == 16);
+static_assert(sizeof(LibreSslPolicyMapping) == 16 && sizeof(LibreSslGeneralSubtree) == 24 && sizeof(LibreSslNameConstraints) == 16);
+static_assert(sizeof(LibreSslProxyPolicy) == 16 && sizeof(LibreSslProxyCertInfo) == 16 && sizeof(LibreSslSxnetId) == 16 && sizeof(LibreSslSxnet) == 16);
+static_assert(sizeof(LibreSslDistPointName) == 24 && offsetof(LibreSslDistPointName, name) == 8 && offsetof(LibreSslDistPointName, dpName) == 16);
+static_assert(sizeof(LibreSslDistPoint) == 32 && offsetof(LibreSslDistPoint, dpReasons) == 24);
+static_assert(sizeof(LibreSslIssuingDistPoint) == 32 && offsetof(LibreSslIssuingDistPoint, onlyUser) == 8 && offsetof(LibreSslIssuingDistPoint, onlyCa) == 12);
+static_assert(offsetof(LibreSslIssuingDistPoint, onlySomeReasons) == 16 && offsetof(LibreSslIssuingDistPoint, indirectCrl) == 24 && offsetof(LibreSslIssuingDistPoint, onlyAttributes) == 28);
+static_assert(sizeof(LibreSslOcspCrlId) == 24 && sizeof(LibreSslOcspServiceLocator) == 16);
 static_assert(offsetof(LibreSslX509, subjectKeyId) == 96 && offsetof(LibreSslX509, nameConstraints) == 136 && offsetof(LibreSslX509, sha1Hash) == 144 && offsetof(LibreSslX509, auxiliary) == 168);
 
 namespace {
@@ -148,6 +197,7 @@ constexpr int BufferLibrary = 7;
 constexpr int Asn1Library = 13;
 constexpr int AnyFunction = 0xfff;
 constexpr int NestedAsn1Error = 58;
+constexpr int OcspLibrary = 39;
 constexpr int MallocFailure = 65;
 constexpr int AuxError = 100;
 constexpr int BadObjectHeader = 102;
@@ -162,6 +212,7 @@ constexpr int IllegalTaggedAny = 127;
 constexpr int MissingEoc = 137;
 constexpr int MstringNotUniversal = 139;
 constexpr int MstringWrongTag = 140;
+constexpr int NoMatchingChoiceType = 143;
 constexpr int NullIsWrongLength = 144;
 constexpr int SequenceLengthMismatch = 148;
 constexpr int SequenceNotConstructed = 149;
@@ -189,6 +240,8 @@ constexpr int Enumerated = 10;
 constexpr int Utf8String = 12;
 constexpr int Sequence = 16;
 constexpr int Set = 17;
+constexpr int Ia5String = 22;
+constexpr int GeneralizedTime = 24;
 constexpr int UniversalString = 28;
 constexpr int BmpString = 30;
 constexpr int Negative = 0x100;
@@ -216,6 +269,7 @@ constexpr int DynamicData = 0x08;
 constexpr long UtcTimeBit = 0x4000;
 constexpr long GeneralizedTimeBit = 0x8000;
 constexpr long PrintableMask = 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0400 | 0x0100 | 0x0800 | 0x2000 | 0x10000 | 0x1000;
+constexpr long DirectoryStringMask = 0x0002 | 0x0004 | 0x0800 | 0x0100 | 0x2000;
 constexpr long CanonicalMask = 0x2000 | 0x0800 | 0x0100 | 0x0002 | 0x0004 | 0x0010 | 0x0040;
 constexpr long TagBits[31] = {
     0, 0, 0, 0x0400, 0x0200, 0, 0, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x2000, 0x1000, 0x1000, 0x1000,
@@ -255,7 +309,7 @@ struct Template {
     const Item* item;
 };
 
-enum class Kind { Primitive, MultiString, Sequence, Extern };
+enum class Kind { Primitive, MultiString, Sequence, Choice, Extern };
 
 struct Item {
     Kind kind;
@@ -269,6 +323,7 @@ struct Item {
     bool (*create)(Value*) = nullptr;
     void (*release)(Value*) = nullptr;
     int (*decode)(Value*, const unsigned char**, std::int64_t, int, int, char, TagCache*) = nullptr;
+    int selectorOffset = 0;
 };
 
 extern const Item IntegerItem;
@@ -276,6 +331,7 @@ extern const Item BitStringItem;
 extern const Item AnyItem;
 extern const Item NameEntryItem;
 extern const Item NameInternalItem;
+extern const Item NameItem;
 
 void Asn1Error(int reason) {
     LibreSslPutError_nid_no_patch(Asn1Library, AnyFunction, reason);
@@ -284,6 +340,10 @@ void Asn1Error(int reason) {
 long TagBit(int tag) {
     if (tag < 0 || tag > 30) return 0;
     return TagBits[tag];
+}
+
+std::int32_t* Selector(Value* value, const Item& item) {
+    return reinterpret_cast<std::int32_t*>(static_cast<char*>(*value) + item.selectorOffset);
 }
 
 Value* Field(Value* parent, const Template& field) {
@@ -690,6 +750,7 @@ void ItemClear(Value* value, const Item& item) {
         PrimitiveClear(value, &item);
         break;
     case Kind::Sequence:
+    case Kind::Choice:
     case Kind::Extern:
         *value = nullptr;
         break;
@@ -800,6 +861,25 @@ bool ItemNew(Value* value, const Item& item) {
             return false;
         }
         break;
+    case Kind::Choice:
+        if (item.callback) {
+            const int result = item.callback(NewPre, value);
+            if (!result) {
+                Asn1Error(AuxError);
+                ItemFree(value, item);
+                return false;
+            }
+            if (result == 2) return true;
+        }
+        *value = calloc_nid_postfix(1, static_cast<std::size_t>(item.size));
+        if (!*value) return memoryError();
+        *Selector(value, item) = -1;
+        if (item.callback && !item.callback(NewPost, value)) {
+            Asn1Error(AuxError);
+            ItemFree(value, item);
+            return false;
+        }
+        break;
     }
     return true;
 }
@@ -840,6 +920,15 @@ void ItemFree(Value* value, const Item& item) {
         free_nid_postfix(*value);
         *value = nullptr;
         break;
+    case Kind::Choice: {
+        if (item.callback && item.callback(FreePre, value) == 2) return;
+        const int selector = *Selector(value, item);
+        if (selector >= 0 && selector < item.count) TemplateFree(Field(value, item.templates[selector]), item.templates[selector]);
+        if (item.callback) item.callback(FreePost, value);
+        free_nid_postfix(*value);
+        *value = nullptr;
+        break;
+    }
     }
 }
 
@@ -1444,6 +1533,52 @@ int SequenceDecode(Value* value, const unsigned char** in, std::int64_t length, 
     return 1;
 }
 
+int ChoiceDecode(Value* value, const unsigned char** in, std::int64_t length, const Item& item, char optional, TagCache* cache) {
+    auto fail = [&] {
+        ItemFree(value, item);
+        return 0;
+    };
+    if (item.callback && !item.callback(DecodePre, value)) {
+        Asn1Error(AuxError);
+        return fail();
+    }
+    if (*value) {
+        std::int32_t* selector = Selector(value, item);
+        if (*selector >= 0 && *selector < item.count) {
+            TemplateFree(Field(value, item.templates[*selector]), item.templates[*selector]);
+            *selector = -1;
+        }
+    } else if (!ItemNew(value, item)) {
+        Asn1Error(NestedAsn1Error);
+        return fail();
+    }
+    const unsigned char* p = *in;
+    int index = 0;
+    for (; index < item.count; ++index) {
+        const Template& field = item.templates[index];
+        const int found = TemplateDecode(Field(value, field), &p, length, field, 1, cache);
+        if (found == -1) continue;
+        if (found > 0) break;
+        Asn1Error(NestedAsn1Error);
+        return fail();
+    }
+    if (index == item.count) {
+        if (optional) {
+            ItemFree(value, item);
+            return -1;
+        }
+        Asn1Error(NoMatchingChoiceType);
+        return fail();
+    }
+    *Selector(value, item) = index;
+    *in = p;
+    if (item.callback && !item.callback(DecodePost, value)) {
+        Asn1Error(AuxError);
+        return fail();
+    }
+    return 1;
+}
+
 int ItemDecode(Value* value, const unsigned char** in, std::int64_t length, const Item& item, int tag, int tagClass, char optional, TagCache* cache) {
     if (!value) return 0;
     switch (item.kind) {
@@ -1484,6 +1619,8 @@ int ItemDecode(Value* value, const unsigned char** in, std::int64_t length, cons
         return item.decode(value, in, length, tag, tagClass, optional, cache);
     case Kind::Sequence:
         return SequenceDecode(value, in, length, item, tag, tagClass, optional, cache);
+    case Kind::Choice:
+        return ChoiceDecode(value, in, length, item, optional, cache);
     }
     return 0;
 }
@@ -1847,6 +1984,258 @@ const Template CertificateTemplates[] = {
 const Item CertificateItem{.kind = Kind::Sequence, .type = Sequence, .templates = CertificateTemplates, .count = 3, .size = sizeof(LibreSslX509),
     .callback = CertificateCallback, .referenceOffset = offsetof(LibreSslX509, references)};
 
+const Item FalseBooleanItem{.kind = Kind::Primitive, .type = Boolean};
+const Item EnumeratedItem{.kind = Kind::Primitive, .type = Enumerated};
+const Item Ia5StringItem{.kind = Kind::Primitive, .type = Ia5String};
+const Item GeneralizedTimeItem{.kind = Kind::Primitive, .type = GeneralizedTime};
+const Item NullItem{.kind = Kind::Primitive, .type = Null};
+const Item SequenceStringItem{.kind = Kind::Primitive, .type = Sequence};
+const Item DirectoryStringItem{.kind = Kind::MultiString, .type = DirectoryStringMask, .size = sizeof(Asn1String)};
+
+const Template OtherNameTemplates[] = {
+    {0, 0, offsetof(LibreSslOtherName, typeId), &ObjectItem},
+    {ExplicitTag | ContextClass, 0, offsetof(LibreSslOtherName, value), &AnyItem},
+};
+const Item OtherNameItem{.kind = Kind::Sequence, .type = Sequence, .templates = OtherNameTemplates, .count = 2, .size = sizeof(LibreSslOtherName)};
+
+const Template EdiPartyNameTemplates[] = {
+    {ImplicitTag | ContextClass | Optional, 0, offsetof(LibreSslEdiPartyName, nameAssigner), &DirectoryStringItem},
+    {ImplicitTag | ContextClass | Optional, 1, offsetof(LibreSslEdiPartyName, partyName), &DirectoryStringItem},
+};
+const Item EdiPartyNameItem{.kind = Kind::Sequence, .type = Sequence, .templates = EdiPartyNameTemplates, .count = 2, .size = sizeof(LibreSslEdiPartyName)};
+
+const Template GeneralNameTemplates[] = {
+    {ImplicitTag | ContextClass, 0, offsetof(LibreSslGeneralName, value), &OtherNameItem},
+    {ImplicitTag | ContextClass, 1, offsetof(LibreSslGeneralName, value), &Ia5StringItem},
+    {ImplicitTag | ContextClass, 2, offsetof(LibreSslGeneralName, value), &Ia5StringItem},
+    {ImplicitTag | ContextClass, 3, offsetof(LibreSslGeneralName, value), &SequenceStringItem},
+    {ExplicitTag | ContextClass, 4, offsetof(LibreSslGeneralName, value), &NameItem},
+    {ImplicitTag | ContextClass, 5, offsetof(LibreSslGeneralName, value), &EdiPartyNameItem},
+    {ImplicitTag | ContextClass, 6, offsetof(LibreSslGeneralName, value), &Ia5StringItem},
+    {ImplicitTag | ContextClass, 7, offsetof(LibreSslGeneralName, value), &OctetStringItem},
+    {ImplicitTag | ContextClass, 8, offsetof(LibreSslGeneralName, value), &ObjectItem},
+};
+const Item GeneralNameItem{.kind = Kind::Choice, .type = Undefined, .templates = GeneralNameTemplates, .count = 9, .size = sizeof(LibreSslGeneralName),
+    .selectorOffset = offsetof(LibreSslGeneralName, type)};
+const Template GeneralNamesTemplate{SequenceOf, 0, 0, &GeneralNameItem};
+const Item GeneralNamesItem{.kind = Kind::Primitive, .type = Undefined, .templates = &GeneralNamesTemplate};
+
+const Template BasicConstraintsTemplates[] = {
+    {Optional, 0, offsetof(LibreSslBasicConstraints, ca), &FalseBooleanItem},
+    {Optional, 0, offsetof(LibreSslBasicConstraints, pathLength), &IntegerItem},
+};
+const Item BasicConstraintsItem{.kind = Kind::Sequence, .type = Sequence, .templates = BasicConstraintsTemplates, .count = 2, .size = sizeof(LibreSslBasicConstraints)};
+
+const Template AuthorityKeyIdTemplates[] = {
+    {ImplicitTag | ContextClass | Optional, 0, offsetof(LibreSslAuthorityKeyId, keyId), &OctetStringItem},
+    {ImplicitTag | ContextClass | SequenceOf | Optional, 1, offsetof(LibreSslAuthorityKeyId, issuer), &GeneralNameItem},
+    {ImplicitTag | ContextClass | Optional, 2, offsetof(LibreSslAuthorityKeyId, serial), &IntegerItem},
+};
+const Item AuthorityKeyIdItem{.kind = Kind::Sequence, .type = Sequence, .templates = AuthorityKeyIdTemplates, .count = 3, .size = sizeof(LibreSslAuthorityKeyId)};
+
+const Template ExtendedKeyUsageTemplate{SequenceOf, 0, 0, &ObjectItem};
+const Item ExtendedKeyUsageItem{.kind = Kind::Primitive, .type = Undefined, .templates = &ExtendedKeyUsageTemplate};
+
+const Template AccessDescriptionTemplates[] = {
+    {0, 0, offsetof(LibreSslAccessDescription, method), &ObjectItem},
+    {0, 0, offsetof(LibreSslAccessDescription, location), &GeneralNameItem},
+};
+const Item AccessDescriptionItem{.kind = Kind::Sequence, .type = Sequence, .templates = AccessDescriptionTemplates, .count = 2, .size = sizeof(LibreSslAccessDescription)};
+const Template AuthorityInfoAccessTemplate{SequenceOf, 0, 0, &AccessDescriptionItem};
+const Item AuthorityInfoAccessItem{.kind = Kind::Primitive, .type = Undefined, .templates = &AuthorityInfoAccessTemplate};
+
+const Template PrivateKeyUsagePeriodTemplates[] = {
+    {ImplicitTag | ContextClass | Optional, 0, offsetof(LibreSslPrivateKeyUsagePeriod, notBefore), &GeneralizedTimeItem},
+    {ImplicitTag | ContextClass | Optional, 1, offsetof(LibreSslPrivateKeyUsagePeriod, notAfter), &GeneralizedTimeItem},
+};
+const Item PrivateKeyUsagePeriodItem{.kind = Kind::Sequence, .type = Sequence, .templates = PrivateKeyUsagePeriodTemplates, .count = 2,
+    .size = sizeof(LibreSslPrivateKeyUsagePeriod)};
+
+const Template PolicyConstraintsTemplates[] = {
+    {ImplicitTag | ContextClass | Optional, 0, offsetof(LibreSslPolicyConstraints, requireExplicitPolicy), &IntegerItem},
+    {ImplicitTag | ContextClass | Optional, 1, offsetof(LibreSslPolicyConstraints, inhibitPolicyMapping), &IntegerItem},
+};
+const Item PolicyConstraintsItem{.kind = Kind::Sequence, .type = Sequence, .templates = PolicyConstraintsTemplates, .count = 2, .size = sizeof(LibreSslPolicyConstraints)};
+
+const Template PolicyMappingTemplates[] = {
+    {0, 0, offsetof(LibreSslPolicyMapping, issuerDomainPolicy), &ObjectItem},
+    {0, 0, offsetof(LibreSslPolicyMapping, subjectDomainPolicy), &ObjectItem},
+};
+const Item PolicyMappingItem{.kind = Kind::Sequence, .type = Sequence, .templates = PolicyMappingTemplates, .count = 2, .size = sizeof(LibreSslPolicyMapping)};
+const Template PolicyMappingsTemplate{SequenceOf, 0, 0, &PolicyMappingItem};
+const Item PolicyMappingsItem{.kind = Kind::Primitive, .type = Undefined, .templates = &PolicyMappingsTemplate};
+
+const Template GeneralSubtreeTemplates[] = {
+    {0, 0, offsetof(LibreSslGeneralSubtree, base), &GeneralNameItem},
+    {ImplicitTag | ContextClass | Optional, 0, offsetof(LibreSslGeneralSubtree, minimum), &IntegerItem},
+    {ImplicitTag | ContextClass | Optional, 1, offsetof(LibreSslGeneralSubtree, maximum), &IntegerItem},
+};
+const Item GeneralSubtreeItem{.kind = Kind::Sequence, .type = Sequence, .templates = GeneralSubtreeTemplates, .count = 3, .size = sizeof(LibreSslGeneralSubtree)};
+
+const Template NameConstraintsTemplates[] = {
+    {ImplicitTag | ContextClass | SequenceOf | Optional, 0, offsetof(LibreSslNameConstraints, permittedSubtrees), &GeneralSubtreeItem},
+    {ImplicitTag | ContextClass | SequenceOf | Optional, 1, offsetof(LibreSslNameConstraints, excludedSubtrees), &GeneralSubtreeItem},
+};
+const Item NameConstraintsItem{.kind = Kind::Sequence, .type = Sequence, .templates = NameConstraintsTemplates, .count = 2, .size = sizeof(LibreSslNameConstraints)};
+
+const Template ProxyPolicyTemplates[] = {
+    {0, 0, offsetof(LibreSslProxyPolicy, policyLanguage), &ObjectItem},
+    {Optional, 0, offsetof(LibreSslProxyPolicy, policy), &OctetStringItem},
+};
+const Item ProxyPolicyItem{.kind = Kind::Sequence, .type = Sequence, .templates = ProxyPolicyTemplates, .count = 2, .size = sizeof(LibreSslProxyPolicy)};
+
+const Template ProxyCertInfoTemplates[] = {
+    {Optional, 0, offsetof(LibreSslProxyCertInfo, pathLengthConstraint), &IntegerItem},
+    {0, 0, offsetof(LibreSslProxyCertInfo, proxyPolicy), &ProxyPolicyItem},
+};
+const Item ProxyCertInfoItem{.kind = Kind::Sequence, .type = Sequence, .templates = ProxyCertInfoTemplates, .count = 2, .size = sizeof(LibreSslProxyCertInfo)};
+
+const Template SxnetIdTemplates[] = {
+    {0, 0, offsetof(LibreSslSxnetId, zone), &IntegerItem},
+    {0, 0, offsetof(LibreSslSxnetId, user), &OctetStringItem},
+};
+const Item SxnetIdItem{.kind = Kind::Sequence, .type = Sequence, .templates = SxnetIdTemplates, .count = 2, .size = sizeof(LibreSslSxnetId)};
+
+const Template SxnetTemplates[] = {
+    {0, 0, offsetof(LibreSslSxnet, version), &IntegerItem},
+    {SequenceOf, 0, offsetof(LibreSslSxnet, ids), &SxnetIdItem},
+};
+const Item SxnetItem{.kind = Kind::Sequence, .type = Sequence, .templates = SxnetTemplates, .count = 2, .size = sizeof(LibreSslSxnet)};
+
+int DistPointNameCallback(Operation operation, Value* value) {
+    auto* name = static_cast<LibreSslDistPointName*>(*value);
+    if (operation == NewPost) {
+        name->dpName = nullptr;
+    } else if (operation == FreePost && name->dpName) {
+        Value dpName = name->dpName;
+        ItemFree(&dpName, NameItem);
+    }
+    return 1;
+}
+
+const Template DistPointNameTemplates[] = {
+    {ImplicitTag | ContextClass | SequenceOf, 0, offsetof(LibreSslDistPointName, name), &GeneralNameItem},
+    {ImplicitTag | ContextClass | SetOf, 1, offsetof(LibreSslDistPointName, name), &NameEntryItem},
+};
+const Item DistPointNameItem{.kind = Kind::Choice, .type = Undefined, .templates = DistPointNameTemplates, .count = 2, .size = sizeof(LibreSslDistPointName),
+    .callback = DistPointNameCallback, .selectorOffset = offsetof(LibreSslDistPointName, type)};
+
+const Template DistPointTemplates[] = {
+    {ExplicitTag | ContextClass | Optional, 0, offsetof(LibreSslDistPoint, distPoint), &DistPointNameItem},
+    {ImplicitTag | ContextClass | Optional, 1, offsetof(LibreSslDistPoint, reasons), &BitStringItem},
+    {ImplicitTag | ContextClass | SequenceOf | Optional, 2, offsetof(LibreSslDistPoint, crlIssuer), &GeneralNameItem},
+};
+const Item DistPointItem{.kind = Kind::Sequence, .type = Sequence, .templates = DistPointTemplates, .count = 3, .size = sizeof(LibreSslDistPoint)};
+const Template CrlDistPointsTemplate{SequenceOf, 0, 0, &DistPointItem};
+const Item CrlDistPointsItem{.kind = Kind::Primitive, .type = Undefined, .templates = &CrlDistPointsTemplate};
+
+const Template IssuingDistPointTemplates[] = {
+    {ExplicitTag | ContextClass | Optional, 0, offsetof(LibreSslIssuingDistPoint, distPoint), &DistPointNameItem},
+    {ImplicitTag | ContextClass | Optional, 1, offsetof(LibreSslIssuingDistPoint, onlyUser), &FalseBooleanItem},
+    {ImplicitTag | ContextClass | Optional, 2, offsetof(LibreSslIssuingDistPoint, onlyCa), &FalseBooleanItem},
+    {ImplicitTag | ContextClass | Optional, 3, offsetof(LibreSslIssuingDistPoint, onlySomeReasons), &BitStringItem},
+    {ImplicitTag | ContextClass | Optional, 4, offsetof(LibreSslIssuingDistPoint, indirectCrl), &FalseBooleanItem},
+    {ImplicitTag | ContextClass | Optional, 5, offsetof(LibreSslIssuingDistPoint, onlyAttributes), &FalseBooleanItem},
+};
+const Item IssuingDistPointItem{.kind = Kind::Sequence, .type = Sequence, .templates = IssuingDistPointTemplates, .count = 6, .size = sizeof(LibreSslIssuingDistPoint)};
+
+const Template OcspCrlIdTemplates[] = {
+    {ExplicitTag | ContextClass | Optional, 0, offsetof(LibreSslOcspCrlId, crlUrl), &Ia5StringItem},
+    {ExplicitTag | ContextClass | Optional, 1, offsetof(LibreSslOcspCrlId, crlNumber), &IntegerItem},
+    {ExplicitTag | ContextClass | Optional, 2, offsetof(LibreSslOcspCrlId, crlTime), &GeneralizedTimeItem},
+};
+const Item OcspCrlIdItem{.kind = Kind::Sequence, .type = Sequence, .templates = OcspCrlIdTemplates, .count = 3, .size = sizeof(LibreSslOcspCrlId)};
+
+const Template OcspServiceLocatorTemplates[] = {
+    {0, 0, offsetof(LibreSslOcspServiceLocator, issuer), &NameItem},
+    {SequenceOf | Optional, 0, offsetof(LibreSslOcspServiceLocator, locator), &AccessDescriptionItem},
+};
+const Item OcspServiceLocatorItem{.kind = Kind::Sequence, .type = Sequence, .templates = OcspServiceLocatorTemplates, .count = 2, .size = sizeof(LibreSslOcspServiceLocator)};
+
+enum class Decoder { Template, Nonce, Policies };
+
+struct ExtensionMethod {
+    int nid;
+    Decoder decoder;
+    const Item* item;
+};
+
+const ExtensionMethod ExtensionMethods[] = {
+    {71, Decoder::Template, &BitStringItem},
+    {72, Decoder::Template, &Ia5StringItem},
+    {73, Decoder::Template, &Ia5StringItem},
+    {74, Decoder::Template, &Ia5StringItem},
+    {75, Decoder::Template, &Ia5StringItem},
+    {76, Decoder::Template, &Ia5StringItem},
+    {77, Decoder::Template, &Ia5StringItem},
+    {78, Decoder::Template, &Ia5StringItem},
+    {82, Decoder::Template, &OctetStringItem},
+    {83, Decoder::Template, &BitStringItem},
+    {84, Decoder::Template, &PrivateKeyUsagePeriodItem},
+    {85, Decoder::Template, &GeneralNamesItem},
+    {86, Decoder::Template, &GeneralNamesItem},
+    {87, Decoder::Template, &BasicConstraintsItem},
+    {88, Decoder::Template, &IntegerItem},
+    {89, Decoder::Policies, nullptr},
+    {90, Decoder::Template, &AuthorityKeyIdItem},
+    {103, Decoder::Template, &CrlDistPointsItem},
+    {126, Decoder::Template, &ExtendedKeyUsageItem},
+    {140, Decoder::Template, &IntegerItem},
+    {141, Decoder::Template, &EnumeratedItem},
+    {142, Decoder::Template, &GeneralizedTimeItem},
+    {143, Decoder::Template, &SxnetItem},
+    {177, Decoder::Template, &AuthorityInfoAccessItem},
+    {366, Decoder::Nonce, nullptr},
+    {367, Decoder::Template, &OcspCrlIdItem},
+    {368, Decoder::Template, &ExtendedKeyUsageItem},
+    {369, Decoder::Template, &NullItem},
+    {370, Decoder::Template, &GeneralizedTimeItem},
+    {371, Decoder::Template, &OcspServiceLocatorItem},
+    {398, Decoder::Template, &AuthorityInfoAccessItem},
+    {401, Decoder::Template, &PolicyConstraintsItem},
+    {430, Decoder::Template, &ObjectItem},
+    {663, Decoder::Template, &ProxyCertInfoItem},
+    {666, Decoder::Template, &NameConstraintsItem},
+    {747, Decoder::Template, &PolicyMappingsItem},
+    {748, Decoder::Template, &IntegerItem},
+    {770, Decoder::Template, &IssuingDistPointItem},
+    {771, Decoder::Template, &GeneralNamesItem},
+    {857, Decoder::Template, &CrlDistPointsItem},
+};
+
+const ExtensionMethod* FindExtensionMethod(int nid) {
+    const auto* end = std::end(ExtensionMethods);
+    const auto* method = std::lower_bound(std::begin(ExtensionMethods), end, nid, [](const ExtensionMethod& entry, int key) { return entry.nid < key; });
+    return method != end && method->nid == nid ? method : nullptr;
+}
+
+Value NonceDecode(const Asn1String* content) {
+    Asn1String* nonce = StringNew(OctetString);
+    if (nonce && StringSet(nonce, content->data, content->length)) return nonce;
+    if (nonce) StringFree(nonce);
+    LibreSslPutError_nid_no_patch(OcspLibrary, AnyFunction, MallocFailure);
+    return nullptr;
+}
+
+Value ExtensionDecode(const LibreSslX509Extension* extension) {
+    const ExtensionMethod* method = FindExtensionMethod(LibreSslObjectNid_nid_no_patch(extension->object));
+    if (!method) return nullptr;
+    if (!extension->value) throw std::invalid_argument("X509_get_ext_d2i: an extension without a value");
+    switch (method->decoder) {
+    case Decoder::Policies:
+        NotImplemented_nid_no_patch("X509_get_ext_d2i of certificatePolicies, whose qualifiers need ANY DEFINED BY decoding");
+    case Decoder::Nonce:
+        return NonceDecode(extension->value);
+    case Decoder::Template:
+        break;
+    }
+    const unsigned char* p = extension->value->data;
+    Value value = nullptr;
+    TagCache cache{};
+    if (ItemDecode(&value, &p, extension->value->length, *method->item, -1, 0, 0, &cache) > 0) return value;
+    return nullptr;
+}
+
 } // namespace
 
 extern "C" {
@@ -1863,6 +2252,41 @@ LibreSslX509* APS5_VABI d2i_X509_nid_postfix(LibreSslX509** certificate, const u
 
 void APS5_VABI X509_free_nid_postfix(LibreSslX509* certificate) {
     FreeValue(certificate, CertificateItem);
+}
+
+
+void* APS5_VABI X509_get_ext_d2i_nid_postfix(const LibreSslX509* certificate, int nid, int* critical, int* index) {
+    if (!certificate || !certificate->certificateInfo) throw std::invalid_argument(std::string(__func__) + ": null certificate");
+    const LibreSslStack* extensions = certificate->certificateInfo->extensions;
+    if (!extensions) {
+        if (index) *index = -1;
+        if (critical) *critical = -1;
+        return nullptr;
+    }
+    const std::int64_t start = index ? static_cast<std::int64_t>(*index) + 1 : 0;
+    const LibreSslX509Extension* found = nullptr;
+    for (std::int64_t position = std::max<std::int64_t>(start, 0); position < extensions->num; ++position) {
+        const auto* extension = reinterpret_cast<const LibreSslX509Extension*>(extensions->data[position]);
+        if (!extension) throw std::invalid_argument(std::string(__func__) + ": a null extension");
+        if (LibreSslObjectNid_nid_no_patch(extension->object) != nid) continue;
+        if (index) {
+            *index = static_cast<int>(position);
+            found = extension;
+            break;
+        }
+        if (found) {
+            if (critical) *critical = -2;
+            return nullptr;
+        }
+        found = extension;
+    }
+    if (!found) {
+        if (index) *index = -1;
+        if (critical) *critical = -1;
+        return nullptr;
+    }
+    if (critical) *critical = found->critical > 0 ? 1 : 0;
+    return ExtensionDecode(found);
 }
 
 }

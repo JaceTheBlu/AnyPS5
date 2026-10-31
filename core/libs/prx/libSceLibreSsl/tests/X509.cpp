@@ -9,6 +9,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -231,6 +232,153 @@ std::set<void*> live;
 int failAt = 0;
 int calls = 0;
 
+const Bytes SubjectAltName{0x55, 0x1d, 0x11};
+const Bytes BasicConstraintsObject{0x55, 0x1d, 0x13};
+const Bytes KeyUsageObject{0x55, 0x1d, 0x0f};
+const Bytes ExtendedKeyUsageObject{0x55, 0x1d, 0x25};
+const Bytes AuthorityKeyIdObject{0x55, 0x1d, 0x23};
+const Bytes CrlDistributionPoints{0x55, 0x1d, 0x1f};
+const Bytes CertificatePolicies{0x55, 0x1d, 0x20};
+const Bytes DirectoryAttributes{0x55, 0x1d, 0x09};
+const Bytes AuthorityInfoAccess{0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x01, 0x01};
+const Bytes OcspNonce{0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x30, 0x01, 0x02};
+const Bytes OcspMethod{0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x30, 0x01};
+const Bytes ServerAuth{0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01};
+const Bytes ClientAuth{0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x02};
+
+Bytes Extension(const Bytes& object, int critical, const Bytes& value) {
+    Bytes fields = Tlv(0x06, object);
+    if (critical >= 0) fields = Cat({fields, Tlv(0x01, {static_cast<unsigned char>(critical ? 0xff : 0x00)})});
+    return Tlv(0x30, Cat({fields, Tlv(0x04, value)}));
+}
+
+LibreSslX509* WithExtensions(const Bytes& extensions) {
+    return Decode(Signed(Tlv(0x30, Cat({Tlv(0xa0, Tlv(0x02, {0x02})), Tlv(0x02, {0x01}), Algorithm(), Issuer(), Validity(), Subject("Ext"), PublicKey(),
+        Tlv(0xa3, Tlv(0x30, extensions))}))));
+}
+
+const LibreSslGeneralName* NameAt(const LibreSslStack* names, int index) {
+    return reinterpret_cast<const LibreSslGeneralName*>(names->data[index]);
+}
+
+void* Lookup(LibreSslX509* certificate, int nid, int* critical, int* index) {
+    return X509_get_ext_d2i_nid_postfix(certificate, nid, critical, index);
+}
+
+void GeneralNames() {
+    const Bytes otherName = Tlv(0xa0, Cat({Tlv(0x06, {0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x14, 0x02, 0x03}), Tlv(0xa0, Tlv(0x0c, Text("upn")))}));
+    const Bytes names = Tlv(0x30, Cat({otherName, Tlv(0x81, Text("a@b.c")), Tlv(0x82, Text("example.com")), Tlv(0xa3, Tlv(0x02, {0x01})), Tlv(0xa4, Subject("Dir")),
+        Tlv(0xa5, {}), Tlv(0x86, Text("https://x/")), Tlv(0x87, {127, 0, 0, 1}), Tlv(0x88, {0x2a, 0x03})}));
+    LibreSslX509* certificate = WithExtensions(Extension(SubjectAltName, 1, names));
+    int critical = 7;
+    const auto* decoded = static_cast<const LibreSslStack*>(Lookup(certificate, 85, &critical, nullptr));
+    Require(decoded && decoded->num == 9 && critical == 1, "subjectAltName decodes every general name and reports the critical flag");
+    for (int index = 0; index < 9; ++index) Require(NameAt(decoded, index)->type == index, "each general name records its CHOICE selector");
+    const auto* other = static_cast<const LibreSslOtherName*>(NameAt(decoded, 0)->value);
+    Require(Holds(other->typeId, {0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x14, 0x02, 0x03}) && other->value->type == 12 &&
+        Holds(static_cast<const Asn1String*>(other->value->value), 12, Text("upn"), 0), "an otherName keeps its type and explicitly tagged value");
+    Require(Holds(static_cast<const Asn1String*>(NameAt(decoded, 1)->value), 22, Text("a@b.c"), 0), "an rfc822Name is an IA5String");
+    Require(Holds(static_cast<const Asn1String*>(NameAt(decoded, 2)->value), 22, Text("example.com"), 0), "a dNSName is an IA5String");
+    Require(Holds(static_cast<const Asn1String*>(NameAt(decoded, 3)->value), 16, Tlv(0xa3, Tlv(0x02, {0x01})), 0), "an x400Address keeps its whole encoding");
+    const auto* directory = static_cast<const LibreSslX509Name*>(NameAt(decoded, 4)->value);
+    Require(directory->entries->num == 1 && directory->modified == 0, "a directoryName is a decoded X509_NAME");
+    const auto* party = static_cast<const LibreSslEdiPartyName*>(NameAt(decoded, 5)->value);
+    Require(!party->nameAssigner && !party->partyName, "an empty ediPartyName has no fields");
+    Require(Holds(static_cast<const Asn1String*>(NameAt(decoded, 6)->value), 22, Text("https://x/"), 0), "a URI is an IA5String");
+    Require(Holds(static_cast<const Asn1String*>(NameAt(decoded, 7)->value), 4, {127, 0, 0, 1}, 0), "an iPAddress is an OCTET STRING");
+    Require(Holds(static_cast<const LibreSslAsn1Object*>(NameAt(decoded, 8)->value), {0x2a, 0x03}), "a registeredID is an object");
+    X509_free_nid_postfix(certificate);
+}
+
+void Constraints() {
+    const Bytes usages = Tlv(0x30, Cat({Tlv(0x06, ServerAuth), Tlv(0x06, ClientAuth)}));
+    const Bytes keyId = Tlv(0x30, Cat({Tlv(0x80, {1, 2, 3}), Tlv(0xa1, Tlv(0xa4, Issuer())), Tlv(0x82, {0x05})}));
+    const Bytes points = Tlv(0x30, Tlv(0x30, Tlv(0xa0, Tlv(0xa0, Tlv(0x86, Text("http://crl/"))))));
+    const Bytes access = Tlv(0x30, Tlv(0x30, Cat({Tlv(0x06, OcspMethod), Tlv(0x86, Text("http://ocsp/"))})));
+    LibreSslX509* certificate = WithExtensions(Cat({Extension(BasicConstraintsObject, 0, Tlv(0x30, Cat({Tlv(0x01, {0xff}), Tlv(0x02, {0x03})}))),
+        Extension(KeyUsageObject, -1, {0x03, 0x02, 0x05, 0xa0}), Extension(ExtendedKeyUsageObject, -1, usages), Extension(AuthorityKeyIdObject, -1, keyId),
+        Extension(CrlDistributionPoints, -1, points), Extension(AuthorityInfoAccess, -1, access), Extension(OcspNonce, -1, {0x04, 0x02, 0xaa, 0xbb})}));
+    int critical = 7;
+    const auto* basic = static_cast<const LibreSslBasicConstraints*>(Lookup(certificate, 87, &critical, nullptr));
+    Require(basic && critical == 0 && basic->ca == 0xff && Holds(basic->pathLength, 2, {0x03}, 0), "basicConstraints keeps the boolean byte and the path length");
+    Require(Holds(static_cast<const Asn1String*>(Lookup(certificate, 83, &critical, nullptr)), 3, {0xa0}, 0x08 | 5) && critical == 0, "keyUsage is a BIT STRING");
+    const auto* extended = static_cast<const LibreSslStack*>(Lookup(certificate, 126, nullptr, nullptr));
+    Require(extended && extended->num == 2 && Holds(reinterpret_cast<const LibreSslAsn1Object*>(extended->data[0]), ServerAuth) &&
+        Holds(reinterpret_cast<const LibreSslAsn1Object*>(extended->data[1]), ClientAuth), "extendedKeyUsage is a stack of objects");
+    const auto* authority = static_cast<const LibreSslAuthorityKeyId*>(Lookup(certificate, 90, nullptr, nullptr));
+    Require(authority && Holds(authority->keyId, 4, {1, 2, 3}, 0) && authority->issuer->num == 1 && NameAt(authority->issuer, 0)->type == 4 &&
+        Holds(authority->serial, 2, {0x05}, 0), "authorityKeyIdentifier decodes its implicitly tagged fields");
+    const auto* distribution = static_cast<const LibreSslStack*>(Lookup(certificate, 103, nullptr, nullptr));
+    const auto* point = distribution ? reinterpret_cast<const LibreSslDistPoint*>(distribution->data[0]) : nullptr;
+    Require(point && distribution->num == 1 && point->distPoint->type == 0 && !point->distPoint->dpName && point->distPoint->name->num == 1 &&
+        Holds(static_cast<const Asn1String*>(NameAt(point->distPoint->name, 0)->value), 22, Text("http://crl/"), 0) && !point->reasons && !point->crlIssuer && point->dpReasons == 0,
+        "a distribution point holds its full name");
+    const auto* information = static_cast<const LibreSslStack*>(Lookup(certificate, 177, nullptr, nullptr));
+    const auto* description = information ? reinterpret_cast<const LibreSslAccessDescription*>(information->data[0]) : nullptr;
+    Require(description && Holds(description->method, OcspMethod) && description->location->type == 6, "authorityInfoAccess pairs a method with a location");
+    Require(Holds(static_cast<const Asn1String*>(Lookup(certificate, 366, nullptr, nullptr)), 4, {0x04, 0x02, 0xaa, 0xbb}, 0), "an OCSP nonce copies the raw value");
+    X509_free_nid_postfix(certificate);
+
+    certificate = WithExtensions(Extension(BasicConstraintsObject, -1, Tlv(0x30, {})));
+    basic = static_cast<const LibreSslBasicConstraints*>(Lookup(certificate, 87, nullptr, nullptr));
+    Require(basic && basic->ca == 0 && !basic->pathLength, "an empty basicConstraints defaults ca to false");
+    X509_free_nid_postfix(certificate);
+}
+
+void Positions() {
+    const Bytes first = Extension(SubjectAltName, 0, Tlv(0x30, Tlv(0x82, Text("one"))));
+    const Bytes second = Extension(SubjectAltName, 1, Tlv(0x30, Tlv(0x82, Text("two"))));
+    LibreSslX509* certificate = WithExtensions(Cat({first, Extension(DirectoryAttributes, 1, Tlv(0x30, {})), second}));
+    int critical = 7;
+    Require(!Lookup(certificate, 85, &critical, nullptr) && critical == -2, "a repeated extension without an index pointer reports -2");
+    int index = -1;
+    const auto* names = static_cast<const LibreSslStack*>(Lookup(certificate, 85, &critical, &index));
+    Require(names && index == 0 && critical == 0 && Holds(static_cast<const Asn1String*>(NameAt(names, 0)->value), 22, Text("one"), 0), "the index finds the first occurrence");
+    names = static_cast<const LibreSslStack*>(Lookup(certificate, 85, &critical, &index));
+    Require(names && index == 2 && critical == 1 && Holds(static_cast<const Asn1String*>(NameAt(names, 0)->value), 22, Text("two"), 0), "the index resumes after the last occurrence");
+    Require(!Lookup(certificate, 85, &critical, &index) && index == -1 && critical == -1, "past the last occurrence the index and flag are -1");
+    index = -40;
+    Require(Lookup(certificate, 85, nullptr, &index) && index == 0, "a negative index starts at the beginning");
+    index = 7;
+    Require(!Lookup(certificate, 769, &critical, &index) && index == -1 && critical == -1, "an index past the end finds nothing");
+    index = -1;
+    ERR_clear_error_nid_postfix();
+    Require(!Lookup(certificate, 769, &critical, &index) && index == 1 && critical == 1 && ERR_get_error_nid_postfix() == 0,
+        "an extension without a decoder returns NULL with its position and flag and queues no error");
+    Require(!Lookup(certificate, 13, &critical, &index) && index == -1 && critical == -1, "a NID that is absent gives -1");
+    X509_free_nid_postfix(certificate);
+
+    certificate = Decode(Signed(VersionOne("One")));
+    critical = 7;
+    index = 3;
+    Require(!Lookup(certificate, 85, &critical, &index) && index == -1 && critical == -1, "a certificate without extensions gives -1");
+    X509_free_nid_postfix(certificate);
+}
+
+void ExtensionFailures() {
+    LibreSslX509* certificate = WithExtensions(Cat({Extension(SubjectAltName, -1, Tlv(0x30, Tlv(0x89, {0x01}))), Extension(CertificatePolicies, -1, Tlv(0x30, {}))}));
+    ERR_clear_error_nid_postfix();
+    int critical = 7;
+    Require(!Lookup(certificate, 85, &critical, nullptr) && critical == 0, "a general name with an unknown tag fails");
+    Require(ERR_get_error_nid_postfix() == Asn1Code(143), "an unknown general name reports ASN1_R_NO_MATCHING_CHOICE_TYPE first");
+    ERR_clear_error_nid_postfix();
+    bool threw = false;
+    try {
+        Lookup(certificate, 89, nullptr, nullptr);
+    } catch (...) {
+        threw = true;
+    }
+    Require(threw, "certificatePolicies throws instead of decoding qualifiers");
+    threw = false;
+    try {
+        Lookup(nullptr, 85, nullptr, nullptr);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    Require(threw, "a null certificate throws");
+    X509_free_nid_postfix(certificate);
+}
+
 void* Track(void* pointer) {
     if (pointer) live.insert(pointer);
     return pointer;
@@ -316,4 +464,8 @@ int main(int argc, char**) {
     References();
     Ber();
     Errors();
+    GeneralNames();
+    Constraints();
+    Positions();
+    ExtensionFailures();
 }

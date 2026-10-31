@@ -9,6 +9,11 @@ struct Asn1String {
     std::int64_t flags;
 };
 
+struct LibreSslGeneralName {
+    std::int32_t type;
+    void* value;
+};
+
 struct LibreSslX509VerifyParamId {
     void* hosts;
     std::uint32_t hostFlags;
@@ -296,6 +301,111 @@ struct LibreSslX509 {
     void* nameConstraints;
     unsigned char sha1Hash[20];
     void* auxiliary;
+};
+
+struct LibreSslOtherName {
+    LibreSslAsn1Object* typeId;
+    LibreSslAsn1Type* value;
+};
+
+struct LibreSslEdiPartyName {
+    Asn1String* nameAssigner;
+    Asn1String* partyName;
+};
+
+struct LibreSslBasicConstraints {
+    std::int32_t ca;
+    Asn1String* pathLength;
+};
+
+struct LibreSslAuthorityKeyId {
+    Asn1String* keyId;
+    LibreSslStack* issuer;
+    Asn1String* serial;
+};
+
+struct LibreSslAccessDescription {
+    LibreSslAsn1Object* method;
+    LibreSslGeneralName* location;
+};
+
+struct LibreSslPrivateKeyUsagePeriod {
+    Asn1String* notBefore;
+    Asn1String* notAfter;
+};
+
+struct LibreSslPolicyConstraints {
+    Asn1String* requireExplicitPolicy;
+    Asn1String* inhibitPolicyMapping;
+};
+
+struct LibreSslPolicyMapping {
+    LibreSslAsn1Object* issuerDomainPolicy;
+    LibreSslAsn1Object* subjectDomainPolicy;
+};
+
+struct LibreSslGeneralSubtree {
+    LibreSslGeneralName* base;
+    Asn1String* minimum;
+    Asn1String* maximum;
+};
+
+struct LibreSslNameConstraints {
+    LibreSslStack* permittedSubtrees;
+    LibreSslStack* excludedSubtrees;
+};
+
+struct LibreSslProxyPolicy {
+    LibreSslAsn1Object* policyLanguage;
+    Asn1String* policy;
+};
+
+struct LibreSslProxyCertInfo {
+    Asn1String* pathLengthConstraint;
+    LibreSslProxyPolicy* proxyPolicy;
+};
+
+struct LibreSslSxnetId {
+    Asn1String* zone;
+    Asn1String* user;
+};
+
+struct LibreSslSxnet {
+    Asn1String* version;
+    LibreSslStack* ids;
+};
+
+struct LibreSslDistPointName {
+    std::int32_t type;
+    LibreSslStack* name;
+    LibreSslX509Name* dpName;
+};
+
+struct LibreSslDistPoint {
+    LibreSslDistPointName* distPoint;
+    Asn1String* reasons;
+    LibreSslStack* crlIssuer;
+    std::int32_t dpReasons;
+};
+
+struct LibreSslIssuingDistPoint {
+    LibreSslDistPointName* distPoint;
+    std::int32_t onlyUser;
+    std::int32_t onlyCa;
+    Asn1String* onlySomeReasons;
+    std::int32_t indirectCrl;
+    std::int32_t onlyAttributes;
+};
+
+struct LibreSslOcspCrlId {
+    Asn1String* crlUrl;
+    Asn1String* crlNumber;
+    Asn1String* crlTime;
+};
+
+struct LibreSslOcspServiceLocator {
+    LibreSslX509Name* issuer;
+    LibreSslStack* locator;
 };
 
 struct LibreSslX509StoreContext {
@@ -660,7 +770,7 @@ int APS5_VABI X509_VERIFY_PARAM_set1_ip_asc_nid_postfix(LibreSslX509VerifyParam*
 void APS5_VABI X509_VERIFY_PARAM_set_hostflags_nid_postfix(LibreSslX509VerifyParam* param, std::uint32_t flags);
 int APS5_VABI X509_check_issued_nid_postfix(void);
 void APS5_VABI X509_free_nid_postfix(LibreSslX509* certificate);
-int APS5_VABI X509_get_ext_d2i_nid_postfix(void);
+void* APS5_VABI X509_get_ext_d2i_nid_postfix(const LibreSslX509* certificate, int nid, int* critical, int* index);
 int APS5_VABI X509_get_issuer_name_nid_postfix(void);
 int APS5_VABI X509_get_pubkey_nid_postfix(void);
 int APS5_VABI X509_get_serialNumber_nid_postfix(void);
